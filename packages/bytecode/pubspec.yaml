@@ -1,0 +1,18 @@
+name: ejenix_bytecode
+description: >-
+  The Ejenix bytecode: instruction set, 32-bit encoding with
+  a wide-mode prefix, constant pool, function prototypes, module container, an
+  assembler, and a disassembler. Foundation package; depends on nothing.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/packages/bytecode
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+# No runtime dependencies: the bytecode layer is deliberately self-contained so
+# every other package can depend on it without pulling a transitive graph.
+dev_dependencies:
+  test: ^1.25.0

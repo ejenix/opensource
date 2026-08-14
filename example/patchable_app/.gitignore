@@ -1,0 +1,14 @@
+# A signing key is never committed. `build.sh` generates one on first run; a key
+# checked into a repo is a key you must assume is compromised. Real projects keep
+# it in a secret manager and sign in CI.
+keys/
+
+# Build artifacts: `build.sh` produces the signed patch, and the framework half
+# of the patch SDK is synced from flutter_bridge/patch_sdk/flutter.dart.
+assets/*.bundle
+patch_sdk/flutter.dart
+
+# Standard Flutter
+.dart_tool/
+build/
+.flutter-plugins-dependencies

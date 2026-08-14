@@ -1,0 +1,32 @@
+# A Flutter app architected to be patchable. Standalone (not a workspace member)
+# because it depends on the Flutter SDK; the patch itself is compiled by the
+# pure-Dart toolchain via `build.sh`.
+name: patchable_app
+description: A Flutter app whose home screen is an interpreted, over-the-air patch.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ^3.11.0
+  flutter: ">=3.41.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ejenix_flutter:
+    path: ../../flutter_bridge
+  ejenix_bundle:
+    path: ../../packages/bundle
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # NOTE: ejenix_compiler is intentionally absent — the Flutter SDK pins an older
+  # `meta` than analyzer 14 requires, so they cannot share a package. Patches are
+  # compiled by the pure-Dart toolchain (`build.sh`), which is how a real project
+  # works anyway: patches are built in CI, signed, and published.
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

@@ -1,0 +1,29 @@
+# One-command control plane. Bring it up with ./up.sh (which generates an admin
+# key if you have not set one), or `docker compose up --build`.
+services:
+  control-plane:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: ejenix/control-plane:latest
+    ports:
+      - "${EJENIX_PORT:-8080}:8080"
+    environment:
+      # Required: bearer token for app administration. Fail fast if unset.
+      EJENIX_ADMIN_KEY: ${EJENIX_ADMIN_KEY:?set EJENIX_ADMIN_KEY (see up.sh)}
+      EJENIX_PORT: "8080"
+      EJENIX_DATA_DIR: /data
+      # Optional: 32-byte hex seed for the delta-signing key. If unset, the
+      # server generates an ephemeral key and prints its public key at startup.
+      EJENIX_DELIVERY_SEED: ${EJENIX_DELIVERY_SEED:-}
+    volumes:
+      - ejenix-data:/data
+    restart: unless-stopped
+    # The image is `scratch` (no shell/curl), so health is monitored externally
+    # against the HTTP endpoints the server exposes: GET /v1/health (liveness)
+    # and GET /v1/ready (readiness). Point your orchestrator or load balancer at
+    # those rather than a container-internal healthcheck.
+
+volumes:
+  ejenix-data:
+

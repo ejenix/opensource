@@ -1,0 +1,14 @@
+# Standalone example (not a workspace member): compile, sign, verify, and apply
+# an over-the-air patch. Uses path dependencies on the published packages.
+name: hello_patch
+description: Example — compile, sign, verify, and apply an over-the-air patch.
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  ejenix_bundle:
+    path: ../../packages/bundle
+  ejenix_interpreter:
+    path: ../../packages/interpreter

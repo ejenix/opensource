@@ -1,0 +1,30 @@
+name: ejenix_compiler
+description: >-
+  Compiles a subset of Dart source to Ejenix bytecode:
+  analyzer frontend, typed lowering, optimization passes, and a deterministic
+  bytecode emitter with actionable diagnostics.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/packages/compiler
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  # The instruction set and module container we emit.
+  ejenix_bytecode:
+    path: ../bytecode
+  # Public Dart infrastructure (brief §4.1): parses and resolves Dart source
+  # into a typed AST. This is the compiler frontend.
+  analyzer: ^14.0.0
+  # Normalizes filesystem paths to the absolute, canonical form the analyzer's
+  # AnalysisContextCollection requires. Dart-team, MIT.
+  path: ^1.9.0
+
+dev_dependencies:
+  ejenix_interpreter:
+    path: ../interpreter
+  crypto: ^3.0.0
+  test: ^1.25.0

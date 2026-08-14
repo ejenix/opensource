@@ -1,0 +1,27 @@
+name: ejenix_delta
+description: >-
+  Delta bundles: a binary diff/patch engine over bundle bodies plus the signed
+  delta-bundle envelope, so an update ships as a small patch against a cached
+  base rather than a full bundle.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/packages/delta
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  # The signed envelope a delta bundle reuses (same header + signature).
+  ejenix_bundle:
+    path: ../bundle
+  # Pure-Dart zlib for cross-platform patch compression. Public, MIT.
+  archive: ^4.0.0
+  # SHA-256 for the post-patch integrity check. Dart-team, BSD-3.
+  crypto: ^3.0.0
+
+dev_dependencies:
+  ejenix_bytecode:
+    path: ../bytecode
+  test: ^1.25.0

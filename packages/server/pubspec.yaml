@@ -1,0 +1,32 @@
+name: ejenix_server
+description: >-
+  The self-hosted control plane: a shelf REST API for registering apps,
+  uploading and downloading signed bundles, managing environments, computing
+  deltas. No user analytics.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/packages/server
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  ejenix_bundle:
+    path: ../bundle
+  ejenix_delta:
+    path: ../delta
+  # HTTP server + routing. Google-maintained, MIT (brief §6.8).
+  shelf: ^1.4.0
+  shelf_router: ^1.1.0
+  # SHA-256 for API-key hashing. Dart-team, BSD-3.
+  crypto: ^3.0.0
+
+dev_dependencies:
+  ejenix_bytecode:
+    path: ../bytecode
+  test: ^1.25.0
+
+executables:
+  ejenix-server: ejenix_server

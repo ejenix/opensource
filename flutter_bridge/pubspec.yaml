@@ -1,0 +1,41 @@
+# The Flutter framework bridge: registers a starter set of Flutter widgets and
+# constants as host capabilities so an interpreted patch can build a real widget
+# tree, and renders it with InterpretedView. Standalone (Flutter SDK dependency),
+# not a member of the pure-Dart pub workspace; tested with `flutter test`.
+name: ejenix_flutter
+description: Render Ejenix patches as real Flutter widgets.
+# This is the package apps depend on directly (a git dependency on
+# `path: flutter_bridge`), so it carries a version to pin against and a
+# pointer back to the repository.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/flutter_bridge
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: ">=3.41.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ejenix_bytecode:
+    path: ../packages/bytecode
+  ejenix_interpreter:
+    path: ../packages/interpreter
+  ejenix_bundle:
+    path: ../packages/bundle
+  ejenix_loader:
+    path: ../packages/loader
+  # Used only by the opt-in `ejenix_flutter_http.dart` capability (BSD-3).
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # NOTE: ejenix_compiler (analyzer ^14) is intentionally NOT a dependency here:
+  # this Flutter SDK pins an older `meta` than analyzer 14 requires, so they
+  # cannot share a package. Patches are compiled by the pure-Dart toolchain and
+  # this package runs the resulting module — tests hand-build modules to stay
+  # analyzer-free. In production, compile with a Dart/Flutter toolchain whose
+  # `meta` matches the analyzer.

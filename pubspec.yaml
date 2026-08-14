@@ -1,0 +1,35 @@
+# Root of the Dart pub workspace (the "equivalent mono-repo tool" from the brief).
+# Native pub workspaces (Dart >= 3.6) give us a single lockfile and one
+# `dart pub get` / `dart test` across every package with no third-party tooling.
+name: _ejenix_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+# Every package below shares this workspace's single resolution. Entries are
+# added as each package lands so `dart pub get` stays green at every commit.
+workspace:
+  - packages/bytecode
+  - packages/interpreter
+  - packages/compiler
+  - packages/bundle
+  - packages/delta
+  - packages/loader
+  - packages/cli
+  - packages/server
+
+dev_dependencies:
+  # Pinned dev toolchain shared by all member packages. Determinism is a
+  # feature (brief §10.4): every dependency is pinned to an exact range so the
+  # same commit resolves to the same bytes.
+  test: ^1.25.0
+  coverage: ^1.9.0
+  # Used by `tool/gen_bridge_fixtures.dart`, which compiles the Flutter bridge's
+  # test patches from real Dart source. It must run *here*, in the pure-Dart
+  # workspace: `flutter_bridge` cannot depend on the compiler (the Flutter SDK
+  # pins an older `meta` than `analyzer` requires).
+  ejenix_compiler:
+    path: packages/compiler
+  ejenix_bundle:
+    path: packages/bundle

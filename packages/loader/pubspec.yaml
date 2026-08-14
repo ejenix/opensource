@@ -1,0 +1,26 @@
+name: ejenix_loader
+description: >-
+  The device-side loader and verifier: fetch a bundle over HTTPS, verify it in
+  strict order, stage and atomically activate it, and automatically roll back a
+  crash-looping activation. Talks to exactly one URL; no telemetry.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/packages/loader
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  ejenix_bundle:
+    path: ../bundle
+  ejenix_delta:
+    path: ../delta
+
+dev_dependencies:
+  ejenix_bytecode:
+    path: ../bytecode
+  ejenix_interpreter:
+    path: ../interpreter
+  test: ^1.25.0

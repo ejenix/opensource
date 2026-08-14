@@ -1,0 +1,20 @@
+name: ejenix_interpreter
+description: >-
+  The register-based bytecode interpreter: a threaded-dispatch virtual machine
+  that executes a compiled module, with sandbox quotas and opcode profiling.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/packages/interpreter
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  # The instruction set this VM executes. Same-workspace path dependency.
+  ejenix_bytecode:
+    path: ../bytecode
+
+dev_dependencies:
+  test: ^1.25.0

@@ -1,0 +1,212 @@
+# Continuous integration: the full quality gate from CONTRIBUTING.md.
+# Determinism, zero-warning analysis, and the ≥90% per-package coverage floor
+# are enforced here (brief §6.13, §9, §13).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.12.2"
+      - name: Install dependencies
+        run: dart pub get
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed packages tool
+      - name: Analyze (zero warnings)
+        run: dart analyze --fatal-infos --fatal-warnings packages tool
+      # The dashboard serves its logo and typefaces from bytes compiled into
+      # the binary. If someone replaces an asset in docs/brand/ without
+      # regenerating, the served branding silently stays the old one.
+      - name: Brand assets are embedded and current
+        run: dart run tool/embed_brand.dart --check
+      - name: Run tests
+        run: dart test packages
+
+  coverage:
+    name: coverage (>=90% per package)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.12.2"
+      - run: dart pub get
+      - name: Enforce the 90% floor for every package
+        run: |
+          set -euo pipefail
+          fail=0
+          for dir in packages/*/; do
+            pkg="${dir%/}"
+            if [ -d "$pkg/test" ]; then
+              tool/coverage.sh "$pkg" || fail=1
+            fi
+          done
+          exit $fail
+
+  verify-crypto:
+    name: signing & delta round-trips
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.12.2"
+      - run: dart pub get
+      # These round-trips are the security-critical guarantees of the format;
+      # they are asserted by the bundle, delta, and loader test suites.
+      - name: Ed25519 sign/verify round-trip
+        run: dart test packages/bundle
+      - name: Delta bundle round-trip
+        run: dart test packages/delta
+      - name: Verify chain + crash-loop rollback
+        run: dart test packages/loader
+
+  flutter-bridge:
+    name: flutter bridge (patches render real widgets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: stable
+      - run: dart pub get
+      # The bridge's widget tests render patches compiled from *real Dart
+      # source*. The fixtures are generated here, in the pure-Dart workspace,
+      # because `flutter_bridge` cannot depend on the compiler (the Flutter SDK
+      # pins an older `meta` than `analyzer` requires). `--check` fails if a
+      # committed fixture drifts from its source.
+      - name: Patch fixtures are up to date
+        run: dart run tool/gen_bridge_fixtures.dart --check
+      - name: Bridge renders interpreted patches
+        run: flutter test
+        working-directory: flutter_bridge
+
+  watch-budget:
+    name: ejenix watch (edit->push under 500ms)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.12.2"
+      - run: dart pub get
+      # The DoD budgets the dev-loop round trip at <500ms. The tool exits nonzero
+      # if the WORST sample breaches it — a median that hides a slow tail is
+      # exactly the loop that feels broken in practice.
+      - name: Rebuild loop stays inside the budget
+        run: dart run packages/cli/tool/watch_bench.dart
+
+  web:
+    name: web (interpret + verify under dart2js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.12.2"
+      - run: dart pub get
+      # The DoD requires a patch to apply on Web. `package:test`'s browser
+      # harness cannot load suites from a pub workspace (the symlinked
+      # `packages/` dir is served as text/plain), so prove the property directly:
+      # compile the runtime half to JavaScript and run it. This is exactly what a
+      # device does on Web — interpret bytecode, verify an Ed25519 signature over
+      # a CBOR bundle, and reject an untrusted key.
+      - name: Compile the runtime to JavaScript
+        run: dart compile js packages/interpreter/tool/web_probe.dart -o /tmp/probe.js
+      - name: Interpret and verify on Web
+        run: node /tmp/probe.js | tee /tmp/out && grep -q "WEB OK" /tmp/out
+
+  patchable-app:
+    name: patchable_app (compile -> sign -> verify -> render)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: stable
+      - run: dart pub get
+      # The full production chain, on every push: the real `ejenix build`
+      # signs a patch, and the app's tests verify the signature, reject a patch
+      # signed by another key, and render the interpreted screen against the
+      # app's own injected capabilities.
+      - name: Compile and sign the patch with the real toolchain
+        run: ./build.sh
+        working-directory: example/patchable_app
+      - name: Analyze (the patch and its SDK included)
+        run: flutter analyze
+        working-directory: example/patchable_app
+      - name: A signed patch renders and drives the app's state
+        run: flutter test
+        working-directory: example/patchable_app
+
+  example:
+    name: hello_patch end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "3.12.2"
+      - run: dart pub get
+      # Compile -> sign -> verify -> apply the example patch, asserting the
+      # applied result. This is the whole pipeline as an integration test.
+      - name: Run the example and assert its output
+        run: |
+          set -euo pipefail
+          out="$(bash example/hello_patch/run.sh)"
+          echo "$out"
+          echo "$out" | grep -q 'main() = 226'
+
+  docker:
+    name: control plane (image builds and serves)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Nothing else in CI builds the container, which is how two blockers
+      # reached main: a Dockerfile that could not compile the binary at all, and
+      # a server that crash-looped when the delivery seed arrived as an empty
+      # string. Both were only reachable through this path.
+      - name: Bring the stack up the documented way
+        run: ./deploy.sh --target docker
+      - name: It serves, and keeps serving
+        run: |
+          set -euo pipefail
+          for endpoint in /v1/health /v1/ready /; do
+            code="$(curl -s --retry 20 --retry-connrefused --retry-delay 1 \
+              -o /dev/null -w '%{http_code}' "http://localhost:8080$endpoint")"
+            echo "GET $endpoint -> $code"
+            [ "$code" = "200" ]
+          done
+          # A crash loop still answers a lucky request between restarts, so
+          # assert the container is actually up rather than merely reachable.
+          sleep 5
+          status="$(docker inspect -f '{{.State.Status}}' docker-control-plane-1)"
+          restarts="$(docker inspect -f '{{.RestartCount}}' docker-control-plane-1)"
+          echo "status=$status restarts=$restarts"
+          [ "$status" = "running" ] && [ "$restarts" -eq 0 ]
+      - name: Tear down cleanly from a shell that never saw the secrets
+        run: |
+          set -euo pipefail
+          cd deploy/docker
+          env -u EJENIX_ADMIN_KEY -u EJENIX_DELIVERY_SEED docker compose down -v

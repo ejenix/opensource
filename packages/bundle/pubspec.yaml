@@ -1,0 +1,30 @@
+name: ejenix_bundle
+description: >-
+  The signed bundle format: a compiled module serialized as canonical CBOR,
+  wrapped with an Ed25519 signature, a content hash, and an optional
+  Ed25519 signature. The verifiable unit of delivery.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/packages/bundle
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  # The module we serialize.
+  ejenix_bytecode:
+    path: ../bytecode
+  # SHA-256 for the content hash. Dart-team, BSD-3.
+  crypto: ^3.0.0
+  # Ed25519 sign/verify (RFC 8032), pure Dart and synchronous. MIT.
+  ed25519_edwards: ^0.3.1
+
+dev_dependencies:
+  # Used only by the end-to-end test: compile real Dart, sign it, verify, run.
+  ejenix_compiler:
+    path: ../compiler
+  ejenix_interpreter:
+    path: ../interpreter
+  test: ^1.25.0

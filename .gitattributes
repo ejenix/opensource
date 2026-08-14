@@ -1,0 +1,32 @@
+# Deterministic checkouts on every platform.
+#
+# Git on Windows defaults to core.autocrlf=true, which rewrites LF to CRLF in
+# the working tree. That silently breaks anything compared byte-for-byte: the
+# compiler's golden disassembly is stored with LF, so a CRLF checkout made
+# `golden: arithmetic.dart` fail on windows-latest while passing on Linux and
+# macOS — the bytes on disk differed from the bytes committed.
+#
+# Determinism is a property this project asserts about its own output, so the
+# checkout has to be deterministic first.
+
+# Normalise every text file to LF in the working tree, on every platform.
+* text=auto eol=lf
+
+# Byte-exact artifacts: compared verbatim by tests, so never EOL-converted.
+*.golden -text
+*.mod    -text
+*.bundle -text
+*.key    -text
+
+# Binary assets.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.ttf  binary
+*.otf  binary
+
+# Windows-only scripts need CRLF to be runnable, if any are ever added.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

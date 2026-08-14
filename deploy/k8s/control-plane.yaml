@@ -1,0 +1,81 @@
+# Kubernetes manifests for the control plane. Apply with:
+#   kubectl create secret generic ejenix-secrets \
+#     --from-literal=admin-key="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" \
+#     --from-literal=delivery-seed="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+#   kubectl apply -f deploy/k8s/control-plane.yaml
+#
+# The image is built from deploy/docker/Dockerfile; push it to your registry and
+# set `image:` below accordingly.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ejenix-control-plane
+  labels: { app: ejenix-control-plane }
+spec:
+  # Portable default: a single replica with a ReadWriteOnce volume, which every
+  # storage class supports. To scale out, switch the PVC below to ReadWriteMany
+  # (requires an RWX-capable storage class) and raise replicas.
+  replicas: 1
+  selector:
+    matchLabels: { app: ejenix-control-plane }
+  template:
+    metadata:
+      labels: { app: ejenix-control-plane }
+    spec:
+      containers:
+        - name: control-plane
+          image: ejenix/control-plane:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: EJENIX_PORT
+              value: "8080"
+            - name: EJENIX_DATA_DIR
+              value: /data
+            - name: EJENIX_ADMIN_KEY
+              valueFrom:
+                secretKeyRef: { name: ejenix-secrets, key: admin-key }
+            - name: EJENIX_DELIVERY_SEED
+              valueFrom:
+                secretKeyRef: { name: ejenix-secrets, key: delivery-seed }
+          # The server exposes real HTTP liveness/readiness endpoints.
+          livenessProbe:
+            httpGet: { path: /v1/health, port: 8080 }
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /v1/ready, port: 8080 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      # Shared persistent store so replicas serve the same bundles and log.
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ejenix-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ejenix-data
+spec:
+  accessModes: [ReadWriteOnce] # switch to ReadWriteMany to run multiple replicas
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ejenix-control-plane
+spec:
+  selector: { app: ejenix-control-plane }
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP

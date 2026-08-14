@@ -1,0 +1,30 @@
+function F0 add(2 params, 3 regs)
+  0000  add.i       R2, R0, R1
+  0001  ret         R2
+
+function F1 fib(1 params, 7 regs)
+  0000  load.int    R2, 2
+  0001  lt.i        R1, R0, R2
+  0002  jz          R1, @0004
+  0003  ret         R0
+  0004  load.func   R3, F1
+  0005  load.int    R5, 1
+  0006  sub.i       R4, R0, R5
+  0007  call        R3, _, 1
+  0008  move        R2, R3
+  0009  load.func   R4, F1
+  0010  load.int    R6, 2
+  0011  sub.i       R5, R0, R6
+  0012  call        R4, _, 1
+  0013  move        R3, R4
+  0014  add.i       R1, R2, R3
+  0015  ret         R1
+  0016  ret.void
+
+function F2 average(2 params, 7 regs)
+  0000  add.i       R3, R0, R1
+  0001  load.int    R4, 2
+  0002  i2d         R5, R3
+  0003  i2d         R6, R4
+  0004  div.d       R2, R5, R6
+  0005  ret         R2

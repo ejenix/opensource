@@ -1,0 +1,41 @@
+name: ejenix_cli
+description: >-
+  The `ejenix` command-line tool: compile and sign bundles, produce deltas,
+  verify and inspect artifacts, manage keys, and drive the control plane.
+version: 0.1.0
+repository: https://github.com/ejenix/opensource/tree/main/packages/cli
+issue_tracker: https://github.com/ejenix/opensource/issues
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  ejenix_bytecode:
+    path: ../bytecode
+  ejenix_interpreter:
+    path: ../interpreter
+  ejenix_compiler:
+    path: ../compiler
+  ejenix_bundle:
+    path: ../bundle
+  ejenix_delta:
+    path: ../delta
+  # Command/argument parsing. Dart-team, BSD-3.
+  args: ^2.6.0
+  # `ejenix gen` reads @Patchable annotations off resolved app code.
+  analyzer: ^14.0.0
+  # Relative import paths in generated files.
+  path: ^1.9.0
+  # Formats the code `ejenix gen` writes, so generated files pass `dart format`.
+  dart_style: ^3.0.0
+
+dev_dependencies:
+  # Used only by the publish/promote/rollback integration test: a real server.
+  ejenix_server:
+    path: ../server
+  test: ^1.25.0
+
+executables:
+  ejenix: ejenix
