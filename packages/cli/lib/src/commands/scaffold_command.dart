@@ -98,15 +98,31 @@ class ScaffoldCommand extends EjenixCommand {
 
     console.success('scaffolded $patchPath and $viewPath');
     console.info('Next:');
+    // Step 1 first, and stated plainly: the generated patch imports
+    // $sdkDir/flutter.dart, which is copied rather than generated. Leaving it
+    // out was the first thing every new integration hit — `ejenix build` fails
+    // with "The function 'Scaffold' isn't defined", which reads like a broken
+    // patch and is actually a missing SDK.
     console.info(
-      '  1. `ejenix gen` your @Patchable code into $sdkDir + '
+      '  1. copy the framework patch SDK (required, or the build fails):\n'
+      '       cp <ejenix-clone>/flutter_bridge/patch_sdk/flutter.dart '
+      '$sdkDir/',
+    );
+    console.info(
+      '  2. `ejenix gen` your @Patchable code into $sdkDir + '
       'app_capabilities.g.dart',
     );
     console.info(
-      '  2. fill the TODOs in $viewPath (control plane, app id, key)',
+      '  3. fill the TODOs in $viewPath (key, control plane, app id, env)',
     );
-    console.info('  3. place ${pascalCase(name)}View() in your widget tree');
-    console.info('  4. `ejenix build $patchPath` → push → promote');
+    console.info('  4. place ${pascalCase(name)}View() in your widget tree');
+    console.info('  5. `ejenix build $patchPath` → push → promote');
+    console.info(
+      '  6. for an offline first launch, ship the bundle as an asset:\n'
+      '       cp $name.bundle assets/$name.bundle\n'
+      '       and add "assets/$name.bundle" under flutter: assets: in '
+      'pubspec.yaml',
+    );
     console.emitJson({'patch': patchPath, 'view': viewPath});
     return 0;
   }

@@ -67,7 +67,7 @@ import 'package:ejenix_flutter/ejenix_flutter.dart';
 /// Hosts the interpreted `$name` screen. Offline-first and fail-soft: it shows
 /// the cached patch immediately, updates over the air when the control plane has
 /// a newer verified patch, and falls back to [_fallback] if none is available.
-class ${cls}View extends StatelessWidget {
+class ${cls}View extends StatefulWidget {
   const ${cls}View({super.key});
 
   // TODO: the Ed25519 public key(s) this build trusts — your release.key.pub
@@ -75,10 +75,32 @@ class ${cls}View extends StatelessWidget {
   static final List<Uint8List> _trustedKeys = <Uint8List>[];
 
   @override
+  State<${cls}View> createState() => _${cls}ViewState();
+}
+
+class _${cls}ViewState extends State<${cls}View> {
+  /// Resolved once. Calling `_boot()` inline in `build()` would start a fresh
+  /// future on every rebuild — re-reading the asset and flashing the loading
+  /// state each time a parent rebuilds.
+  ///
+  /// Bounded, because a future that never completes is indistinguishable from
+  /// a spinner that never stops: `hasError` cannot catch a hang, so without a
+  /// deadline the screen would sit on the loading state forever with nothing
+  /// to report. Resolving the cache directory takes milliseconds in practice.
+  late final Future<_Boot> _bootOnce = _boot().timeout(
+    const Duration(seconds: 10),
+  );
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<_Boot>(
-      future: _boot(),
+      future: _bootOnce,
       builder: (context, snapshot) {
+        // A failed boot must not strand the user on a spinner. If the cache
+        // directory cannot be resolved, `EjenixPatchView` is never built, so
+        // its fallbackBuilder can never run — this is the only place that
+        // failure can be caught.
+        if (snapshot.hasError) return _fallback(context, snapshot.error);
         if (!snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -93,7 +115,7 @@ class ${cls}View extends StatelessWidget {
           // production while you promote to staging — and the patch silently
           // never arrives.
           env: 'staging', // TODO: 'production' for a store build
-          trustedKeys: _trustedKeys,
+          trustedKeys: ${cls}View._trustedKeys,
           cacheDir: boot.cacheDir,
           bundledFallback: boot.fallback,
           // extend: appCapabilities(...), // TODO: from `ejenix gen`

@@ -81,10 +81,13 @@ void main() {
 
   test('the host view wraps EjenixPatchView with the app id filled in', () {
     final src = scaffoldView(name: 'home_screen', appId: 'com.acme');
-    expect(src, contains('class HomeScreenView extends StatelessWidget'));
+    // Stateful so the boot future can be resolved once in a field rather than
+    // restarted on every rebuild — see the caching test below.
+    expect(src, contains('class HomeScreenView extends StatefulWidget'));
     expect(src, contains('return EjenixPatchView('));
     expect(src, contains("appId: 'com.acme',"));
-    expect(src, contains('trustedKeys: _trustedKeys,'));
+    // Qualified: the field lives on the widget, the build lives in its State.
+    expect(src, contains('trustedKeys: HomeScreenView._trustedKeys,'));
     expect(src, contains('cacheDir: boot.cacheDir,'));
     expect(src, contains('bundledFallback: boot.fallback,'));
     expect(src, contains("rootBundle.load('assets/home_screen.bundle')"));
@@ -105,6 +108,43 @@ void main() {
       );
     },
   );
+
+  test('a failed boot falls back instead of spinning forever', () {
+    // Found by scaffolding into a real Flutter app and rendering it: the
+    // FutureBuilder only handled `!hasData`, so if _boot() failed the screen
+    // sat on a CircularProgressIndicator permanently — and EjenixPatchView was
+    // never built, so the fallbackBuilder the developer wired could not run.
+    // A silent infinite spinner is the worst possible failure for a widget
+    // whose entire promise is fail-soft.
+    final src = scaffoldView(name: 'home_screen', appId: 'com.acme');
+    expect(
+      src,
+      contains('if (snapshot.hasError)'),
+      reason: 'boot failure must reach the fallback',
+    );
+  });
+
+  test('the boot future is bounded, so a hang cannot strand the screen', () {
+    // hasError catches a *failed* boot; nothing catches one that never
+    // completes. Verified by rendering the scaffolded widget with no
+    // path_provider implementation: without the deadline the screen sat on a
+    // spinner permanently, with it the fallback appears.
+    final src = scaffoldView(name: 'home_screen', appId: 'com.acme');
+    expect(src, contains('.timeout('));
+  });
+
+  test('the boot future is resolved once, not on every rebuild', () {
+    // `future: _boot()` inline in build() starts a fresh future on every
+    // rebuild, re-reading the bundled asset and flashing the loading state
+    // whenever a parent rebuilds.
+    final src = scaffoldView(name: 'home_screen', appId: 'com.acme');
+    expect(src, contains('late final Future<_Boot> _bootOnce = _boot()'));
+    expect(
+      src,
+      isNot(contains('future: _boot(),')),
+      reason: 'the future must be cached, not rebuilt',
+    );
+  });
 
   test('the host view always wires a fallback', () {
     // Without fallbackBuilder a failed patch renders SizedBox.shrink() — an
