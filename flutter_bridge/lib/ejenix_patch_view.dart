@@ -91,6 +91,7 @@ class EjenixPatchView extends StatefulWidget {
     required this.trustedKeys,
     required this.cacheDir,
     this.env = 'production',
+    this.channel = 'default',
     this.bundledFallback,
     this.extend,
     this.functionName = 'build',
@@ -110,6 +111,15 @@ class EjenixPatchView extends StatefulWidget {
   /// a capability this build lacks. Without a budget a hanging patch is
   /// unrecoverable: it never crashes, so nothing triggers the rollback.
   final int? stepLimit;
+
+  /// Which patchable surface of the app this view follows — usually one
+  /// screen, e.g. `home`.
+  ///
+  /// The control plane keys the live bundle on `(appId, channel, env)`, so two
+  /// screens with different channels promote and roll back independently under
+  /// a single app id. Left at `default`, this view uses the pre-channel route
+  /// and behaves exactly as it did before channels existed.
+  final String channel;
 
   /// The control-plane origin, e.g. `https://patches.myapp.com`.
   final Uri controlPlane;
@@ -276,11 +286,14 @@ class _EjenixPatchViewState extends State<EjenixPatchView>
       base: widget.controlPlane,
       appId: widget.appId,
       env: widget.env,
+      channel: widget.channel,
     );
     final fetcher = HttpBundleFetcher();
     String? etag;
     return () async {
-      final id = await client.activeBundleId();
+      // The install id is read from the store and used only here, to evaluate
+      // a staged rollout locally. It never leaves the device.
+      final id = await client.activeBundleId(installId: _store.installId);
       if (id == null) return null;
       // Skip the download entirely for a bundle already proved unrunnable on
       // this build. The control plane keeps serving it — it is the promoted

@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:ejenix_bundle/bundle.dart';
@@ -38,6 +39,7 @@ class BundleStore {
   final int crashThreshold;
 
   Uint8List? _activeId;
+  String _installId = '';
   int _activatedAtMillis = 0;
   int _launchesSinceActivation = 0;
   bool _healthy = false;
@@ -46,6 +48,28 @@ class BundleStore {
 
   /// The active bundle's id, or `null` if none is active.
   Uint8List? get activeId => _activeId;
+
+  /// A random identifier for this install, generated once and kept.
+  ///
+  /// Used only to decide, on the device, whether this install falls inside a
+  /// staged rollout. It is **never sent anywhere** — the control plane
+  /// publishes a share and a salt, and each device works out its own answer.
+  /// That is what lets staged rollout exist without a device registry, and it
+  /// keeps the control plane unable to target an individual install.
+  ///
+  /// Stable across launches, so a device does not drift in and out of a
+  /// rollout between restarts.
+  String get installId {
+    if (_installId.isEmpty) {
+      final r = Random.secure();
+      _installId = [
+        for (var i = 0; i < 16; i++)
+          r.nextInt(256).toRadixString(16).padLeft(2, '0'),
+      ].join();
+      _persist();
+    }
+    return _installId;
+  }
 
   /// The number of launches since the active bundle was activated without a
   /// [markHealthy] call.
@@ -255,6 +279,7 @@ class BundleStore {
         ..clear()
         ..addAll((json['quarantined'] as List? ?? const []).cast<String>());
       _hostFingerprint = json['hostFingerprint'] as String?;
+      _installId = json['installId'] as String? ?? '';
       // Self-heal: an activeId with no file means nothing is active.
       if (_activeId != null && !_activeFile.existsSync()) _activeId = null;
     } on FormatException {
@@ -273,6 +298,7 @@ class BundleStore {
         'history': _history,
         'quarantined': _quarantined.toList(),
         'hostFingerprint': _hostFingerprint,
+        'installId': _installId,
       }),
     );
   }
