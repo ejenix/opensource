@@ -49,37 +49,80 @@ class App {
 
 /// A deployment environment (e.g. `dev`, `staging`, `production`) and the
 /// bundle currently active in it.
+/// The channel used when a caller names none.
+///
+/// Every environment created before channels existed is this one, so the old
+/// routes and every deployed device keep resolving to exactly what they did
+/// before — no migration, no split fleet.
+const String defaultChannel = 'default';
+
+/// One patchable surface of an app, in one environment.
+///
+/// Keyed on `(appId, channel, name)`. The channel exists because an app has
+/// more than one patchable screen, and keying only on `(appId, env)` meant
+/// promoting one screen replaced whatever another had live.
 class Env {
   Env({
     required this.appId,
     required this.name,
+    this.channel = defaultChannel,
     this.activeBundleId,
     this.previousBundleId,
-  });
+    this.rolloutPercent = 100,
+    this.rolloutSalt = '',
+  }) : assert(
+         rolloutPercent >= 0 && rolloutPercent <= 100,
+         'rolloutPercent must be 0..100',
+       );
 
   final String appId;
   final String name;
+
+  /// The patchable surface, e.g. `home`. [defaultChannel] when unnamed.
+  final String channel;
+
   final Uint8List? activeBundleId;
   final Uint8List? previousBundleId;
+
+  /// Share of the fleet that should take [activeBundleId], 0..100.
+  ///
+  /// The device decides whether it is inside this share, by hashing its own
+  /// install id with [rolloutSalt]. The server never learns which devices
+  /// exist — staged rollout costs no device registry and no telemetry.
+  final int rolloutPercent;
+
+  /// Fixed for the life of one promotion, so a device's bucket does not move.
+  ///
+  /// That is what makes widening additive: raising 5% to 20% only ever admits
+  /// more devices, and never drops one that already had the patch.
+  final String rolloutSalt;
 
   Map<String, Object?> toJson() => {
     'appId': appId,
     'name': name,
+    'channel': channel,
     'activeBundleId': activeBundleId == null ? null : _hex(activeBundleId!),
     'previousBundleId': previousBundleId == null
         ? null
         : _hex(previousBundleId!),
+    'rolloutPercent': rolloutPercent,
+    'rolloutSalt': rolloutSalt,
   };
 
   static Env fromJson(Map<String, Object?> json) => Env(
     appId: json['appId'] as String,
     name: json['name'] as String,
+    // Absent in records written before channels existed: they are all default.
+    channel: json['channel'] as String? ?? defaultChannel,
     activeBundleId: json['activeBundleId'] == null
         ? null
         : _unhex(json['activeBundleId'] as String),
     previousBundleId: json['previousBundleId'] == null
         ? null
         : _unhex(json['previousBundleId'] as String),
+    // Absent means "everyone", which is what a pre-rollout record meant.
+    rolloutPercent: json['rolloutPercent'] as int? ?? 100,
+    rolloutSalt: json['rolloutSalt'] as String? ?? '',
   );
 }
 

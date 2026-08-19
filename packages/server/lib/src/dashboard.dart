@@ -253,6 +253,7 @@ const dashboardHtml = r'''<!doctype html>
   .t-sub { font: 12px/1.5 var(--mono); color: var(--muted); margin-top: 3px; }
   .right { text-align: right; }
   .rowacts { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+  .pctin { width: 62px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: 13px; }
 
   select, .inp {
     background: #fff; border: 1px solid var(--line); border-radius: 8px;
@@ -624,17 +625,27 @@ function cardEnvs() {
 
   const rows = shown.length ? shown.map(e => {
     const has = !!e.activeBundleId;
+    // A row is identified by channel AND env: several channels share the env
+    // name "production", and keying on the name alone made every Promote
+    // button post to the default channel.
+    const ch = e.channel || 'default';
+    const key = ch + '\u0000' + e.name;
+    const pct = (e.rolloutPercent === undefined || e.rolloutPercent === null) ? 100 : e.rolloutPercent;
+    const staged = has && pct < 100;
     return '<tr>' +
-      '<td><div class="t-name">' + esc(e.name) + '</div>' +
+      '<td><div class="t-name">' + esc(e.name) +
+      (ch === 'default' ? '' : ' <span class="chip">' + esc(ch) + '</span>') + '</div>' +
       '<div class="t-sub">' + (e.previousBundleId ? 'prev ' + esc(short(e.previousBundleId)) + '…' : 'no previous bundle') + '</div></td>' +
       '<td>' + (has ? '<span class="chip">' + esc(short(e.activeBundleId)) + '…</span>' : '<span class="t-sub">nothing live</span>') + '</td>' +
-      '<td><span class="pill ' + (has ? 'green' : 'amber') + '">' + (has ? 'live' : 'empty') + '</span></td>' +
+      '<td><span class="pill ' + (has ? (staged ? 'amber' : 'green') : 'amber') + '">' +
+        (has ? (staged ? pct + '% rollout' : 'live') : 'empty') + '</span></td>' +
       '<td><div class="rowacts">' +
       (bundles.length
-        ? '<select data-envsel="' + esc(e.name) + '">' + opts + '</select>' +
-          '<button class="btn primary sm" data-promote="' + esc(e.name) + '">Promote</button>'
+        ? '<select data-envsel="' + esc(key) + '">' + opts + '</select>' +
+          '<input class="pctin" type="number" min="0" max="100" value="' + pct + '" title="Rollout %" data-envpct="' + esc(key) + '">' +
+          '<button class="btn primary sm" data-promote="' + esc(key) + '">Promote</button>'
         : '<span class="t-sub">upload a bundle first</span>') +
-      (e.previousBundleId ? '<button class="btn danger sm" data-rollback="' + esc(e.name) + '">Roll back</button>' : '') +
+      (e.previousBundleId ? '<button class="btn danger sm" data-rollback="' + esc(key) + '">Roll back</button>' : '') +
       '</div></td></tr>';
   }).join('') : '<tr><td colspan="4"><div class="empty"><div class="big">' +
     (envs.length ? 'No environment matches the filter.' : 'No environments yet.') + '</div>' +
@@ -697,26 +708,45 @@ function emptyCard(title, big, small) {
 
 /* ------------------------------------------------------------ actions --- */
 
-async function promote(env) {
-  const s = document.querySelector('[data-envsel="' + CSS.escape(env) + '"]');
+/* A row key is "<channel>\0<env>"; the default channel keeps the old route so
+   this page still works against a control plane that predates channels. */
+function envPath(key, tail) {
+  const i = key.indexOf('\u0000');
+  const ch = key.slice(0, i), env = key.slice(i + 1);
+  const base = '/v1/apps/' + encodeURIComponent(sel.id);
+  const where = ch === 'default'
+    ? '/envs/' + encodeURIComponent(env)
+    : '/channels/' + encodeURIComponent(ch) + '/envs/' + encodeURIComponent(env);
+  return { url: base + where + '/' + tail, ch: ch, env: env };
+}
+
+function envLabel(ch, env) { return ch === 'default' ? env : ch + '/' + env; }
+
+async function promote(key) {
+  const s = document.querySelector('[data-envsel="' + CSS.escape(key) + '"]');
+  const p = document.querySelector('[data-envpct="' + CSS.escape(key) + '"]');
   const id = s && s.value;
   if (!id) { toast('No bundle selected', true); return; }
+  const pct = p ? Math.max(0, Math.min(100, parseInt(p.value, 10) || 0)) : 100;
+  const t = envPath(key, 'active');
+  if (pct < 100 && !confirm('Expose ' + short(id) + '… to ' + pct + '% of devices on ' + envLabel(t.ch, t.env) + '?')) return;
   try {
-    await api('/v1/apps/' + encodeURIComponent(sel.id) + '/envs/' + encodeURIComponent(env) + '/active', {
+    await api(t.url, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ bundleId: id }),
+      body: JSON.stringify({ bundleId: id, rolloutPercent: pct }),
     });
-    toast('Promoted ' + short(id) + '… to ' + env);
+    toast('Promoted ' + short(id) + '… to ' + envLabel(t.ch, t.env) + (pct < 100 ? ' (' + pct + '%)' : ''));
     await refresh(true);
   } catch (e) { toast(e.message, true); }
 }
 
-async function rollback(env) {
-  if (!confirm('Roll ' + env + ' back to its previous bundle?')) return;
+async function rollback(key) {
+  const t = envPath(key, 'rollback');
+  if (!confirm('Roll ' + envLabel(t.ch, t.env) + ' back to its previous bundle?')) return;
   try {
-    await api('/v1/apps/' + encodeURIComponent(sel.id) + '/envs/' + encodeURIComponent(env) + '/rollback', { method: 'POST' });
-    toast('Rolled back ' + env);
+    await api(t.url, { method: 'POST' });
+    toast('Rolled back ' + envLabel(t.ch, t.env));
     await refresh(true);
   } catch (e) { toast(e.message, true); }
 }

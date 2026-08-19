@@ -21,7 +21,13 @@ abstract interface class Store {
   Future<void> putBundleRef(String appId, BundleRef ref);
   Future<List<BundleRef>> listBundleRefs(String appId);
 
-  Future<Env?> getEnv(String appId, String name);
+  Future<Env?> getEnv(
+    String appId,
+    String name, {
+    String channel = defaultChannel,
+  });
+
+  /// Every environment of [appId], across every channel.
   Future<List<Env>> listEnvs(String appId);
   Future<void> putEnv(Env env);
 
@@ -67,14 +73,19 @@ class InMemoryStore implements Store {
       List.of(_refs[appId] ?? const []);
 
   @override
-  Future<Env?> getEnv(String appId, String name) async => _envs['$appId/$name'];
+  Future<Env?> getEnv(
+    String appId,
+    String name, {
+    String channel = defaultChannel,
+  }) async => _envs['$appId/$channel/$name'];
 
   @override
   Future<List<Env>> listEnvs(String appId) async =>
       _envs.values.where((e) => e.appId == appId).toList();
 
   @override
-  Future<void> putEnv(Env env) async => _envs['${env.appId}/${env.name}'] = env;
+  Future<void> putEnv(Env env) async =>
+      _envs['${env.appId}/${env.channel}/${env.name}'] = env;
 
   @override
   Future<bool> isHealthy() async => true;

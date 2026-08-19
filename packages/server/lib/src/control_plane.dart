@@ -59,9 +59,38 @@ class ControlPlane {
       ..get('/v1/apps/<app>/bundles', _listBundles)
       ..get('/v1/apps/<app>/bundles/<file>', _downloadBundle)
       ..get('/v1/apps/<app>/envs', _listEnvs)
-      ..post('/v1/apps/<app>/envs/<env>/active', _setActive)
-      ..post('/v1/apps/<app>/envs/<env>/rollback', _rollbackEnv)
-      ..get('/v1/apps/<app>/envs/<env>/active', _getActive)
+      // The pre-channel routes stay, resolving to the default channel, so
+      // every deployed device and existing script keeps working untouched.
+      ..post(
+        '/v1/apps/<app>/envs/<env>/active',
+        (Request r, String app, String env) =>
+            _setActive(r, app, env, defaultChannel),
+      )
+      ..post(
+        '/v1/apps/<app>/envs/<env>/rollback',
+        (Request r, String app, String env) =>
+            _rollbackEnv(r, app, env, defaultChannel),
+      )
+      ..get(
+        '/v1/apps/<app>/envs/<env>/active',
+        (Request r, String app, String env) =>
+            _getActive(r, app, env, defaultChannel),
+      )
+      ..post(
+        '/v1/apps/<app>/channels/<ch>/envs/<env>/active',
+        (Request r, String app, String ch, String env) =>
+            _setActive(r, app, env, ch),
+      )
+      ..post(
+        '/v1/apps/<app>/channels/<ch>/envs/<env>/rollback',
+        (Request r, String app, String ch, String env) =>
+            _rollbackEnv(r, app, env, ch),
+      )
+      ..get(
+        '/v1/apps/<app>/channels/<ch>/envs/<env>/active',
+        (Request r, String app, String ch, String env) =>
+            _getActive(r, app, env, ch),
+      )
       ..post('/v1/apps/<app>/deltas', _computeDelta)
       ..get('/', _dashboard)
       ..get('/dashboard', _dashboard)
@@ -225,8 +254,14 @@ class ControlPlane {
     });
   }
 
-  Future<Response> _setActive(Request request, String appId, String env) async {
+  Future<Response> _setActive(
+    Request request,
+    String appId,
+    String env,
+    String channel,
+  ) async {
     _requireSlug(env, 'environment name');
+    _requireSlug(channel, 'channel name');
     await _authorizeApp(request, appId);
     final body = await _readJson(request);
     final id = _parseBundleId(
@@ -236,27 +271,56 @@ class ControlPlane {
     if (await store.getBundle(appId, id) == null) {
       throw _HttpError(404, 'bundle not found for this app');
     }
-    final current = await store.getEnv(appId, env);
+
+    final percent = _rolloutPercent(body['rolloutPercent']);
+    final current = await store.getEnv(appId, env, channel: channel);
+
+    // The salt is fixed per promoted bundle, not per request. Re-promoting the
+    // same bundle at a wider percentage must admit more devices without
+    // reshuffling the ones already on it — a new salt every time would move
+    // every bucket and could drop a device that already had the patch.
+    final sameBundle =
+        current?.activeBundleId != null &&
+        _sameBytes(current!.activeBundleId!, id);
+    final salt = sameBundle && current.rolloutSalt.isNotEmpty
+        ? current.rolloutSalt
+        : _newSalt();
+
     await store.putEnv(
       Env(
         appId: appId,
         name: env,
+        channel: channel,
         activeBundleId: id,
-        previousBundleId: current?.activeBundleId,
+        // Widening an existing rollout is not a new release, so it must not
+        // shift what a rollback would restore.
+        previousBundleId: sameBundle
+            ? current.previousBundleId
+            : current?.activeBundleId,
+        rolloutPercent: percent,
+        rolloutSalt: salt,
       ),
     );
     metrics.recordActivation(env);
-    return _json(200, {'env': env, 'activeBundleId': formatUuid(id)});
+    return _json(200, {
+      'env': env,
+      'channel': channel,
+      'activeBundleId': formatUuid(id),
+      'rolloutPercent': percent,
+      'rolloutSalt': salt,
+    });
   }
 
   Future<Response> _rollbackEnv(
     Request request,
     String appId,
     String env,
+    String channel,
   ) async {
     _requireSlug(env, 'environment name');
+    _requireSlug(channel, 'channel name');
     await _authorizeApp(request, appId);
-    final current = await store.getEnv(appId, env);
+    final current = await store.getEnv(appId, env, channel: channel);
     final previous = current?.previousBundleId;
     if (previous == null) {
       throw _HttpError(409, 'no previous bundle to roll back to for $env');
@@ -265,27 +329,49 @@ class ControlPlane {
       Env(
         appId: appId,
         name: env,
+        channel: channel,
         activeBundleId: previous,
         previousBundleId: current!.activeBundleId,
+        // Always the whole fleet. A rollback is an incident response, and a
+        // partial one would leave the fleet split at the moment an operator
+        // most needs it whole.
+        rolloutPercent: 100,
+        rolloutSalt: _newSalt(),
       ),
     );
     metrics.recordActivation(env);
     return _json(200, {
       'env': env,
+      'channel': channel,
       'activeBundleId': formatUuid(previous),
       'rolledBackFrom': formatUuid(current.activeBundleId!),
+      'rolloutPercent': 100,
     });
   }
 
-  Future<Response> _getActive(Request request, String appId, String env) async {
+  Future<Response> _getActive(
+    Request request,
+    String appId,
+    String env,
+    String channel,
+  ) async {
     // Unauthenticated (devices poll it), so this guard is the only thing
     // between a crafted URL and an arbitrary path read.
     _requireSlug(env, 'environment name');
+    _requireSlug(channel, 'channel name');
     await _getAppOr404(appId);
-    final environment = await store.getEnv(appId, env);
+    final environment = await store.getEnv(appId, env, channel: channel);
     final active = environment?.activeBundleId;
     if (active == null) throw _HttpError(404, 'no active bundle for $env');
-    return _json(200, {'env': env, 'activeBundleId': formatUuid(active)});
+    return _json(200, {
+      'env': env,
+      'channel': channel,
+      'activeBundleId': formatUuid(active),
+      // The device decides whether it is inside the rollout; the server only
+      // publishes the share and the salt, and never learns who took it.
+      'rolloutPercent': environment!.rolloutPercent,
+      'rolloutSalt': environment.rolloutSalt,
+    });
   }
 
   // --- Deltas ---
@@ -424,6 +510,25 @@ Response _json(int status, Object? body) => Response(
 
 /// Byte-wise equality, used to decide whether an upload is a re-publish of the
 /// same release or an attempt to redefine one.
+/// Validates a caller-supplied rollout share.
+int _rolloutPercent(Object? raw) {
+  if (raw == null) return 100;
+  if (raw is! int || raw < 0 || raw > 100) {
+    throw _HttpError(400, 'rolloutPercent must be an integer 0..100');
+  }
+  return raw;
+}
+
+/// A fresh bucketing salt. Random so two promotions do not select the same
+/// devices — otherwise the same unlucky slice would receive every canary.
+String _newSalt() {
+  final r = Random.secure();
+  return [
+    for (var i = 0; i < 8; i++)
+      r.nextInt(256).toRadixString(16).padLeft(2, '0'),
+  ].join();
+}
+
 bool _sameBytes(List<int> a, List<int> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {

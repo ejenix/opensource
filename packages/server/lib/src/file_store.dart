@@ -15,7 +15,8 @@ import 'store.dart';
 ///   apps/<id>.json          app records
 ///   blobs/<app>/<hex>.bundle bundle bytes (content is the blob interface)
 ///   refs/<app>.jsonl         one bundle ref per line
-///   envs/<app>/<name>.json   environment pointers
+///   envs/<app>/<name>.json             default-channel environment pointers
+///   envs/<app>/<channel>/<name>.json   named-channel environment pointers
 /// ```
 ///
 /// This is deliberately dependency-free (no native SQLite). The SQLite and
@@ -91,9 +92,25 @@ class FileStore implements Store {
     ];
   }
 
+  /// Where one environment record lives.
+  ///
+  /// The default channel keeps the pre-channel layout — `envs/<app>/<env>.json`
+  /// — so a control plane that has been running keeps serving its data with no
+  /// migration step. Named channels nest one level deeper. A channel directory
+  /// and an environment file can never collide: one is `<name>/`, the other is
+  /// `<name>.json`.
+  String _envPath(String appId, String channel, String name) =>
+      channel == defaultChannel
+      ? '${root.path}/envs/$appId/$name.json'
+      : '${root.path}/envs/$appId/$channel/$name.json';
+
   @override
-  Future<Env?> getEnv(String appId, String name) async {
-    final file = File('${root.path}/envs/$appId/$name.json');
+  Future<Env?> getEnv(
+    String appId,
+    String name, {
+    String channel = defaultChannel,
+  }) async {
+    final file = File(_envPath(appId, channel, name));
     if (!file.existsSync()) return null;
     return Env.fromJson(
       jsonDecode(file.readAsStringSync()) as Map<String, Object?>,
@@ -104,19 +121,23 @@ class FileStore implements Store {
   Future<List<Env>> listEnvs(String appId) async {
     final dir = Directory('${root.path}/envs/$appId');
     if (!dir.existsSync()) return const [];
-    return [
-      for (final f in dir.listSync().whereType<File>())
-        Env.fromJson(jsonDecode(f.readAsStringSync()) as Map<String, Object?>),
-    ];
+    final out = <Env>[];
+    for (final entity in dir.listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.json')) continue;
+      out.add(
+        Env.fromJson(
+          jsonDecode(entity.readAsStringSync()) as Map<String, Object?>,
+        ),
+      );
+    }
+    return out;
   }
 
   @override
   Future<void> putEnv(Env env) async {
-    final dir = Directory('${root.path}/envs/${env.appId}')
-      ..createSync(recursive: true);
-    File(
-      '${dir.path}/${env.name}.json',
-    ).writeAsStringSync(jsonEncode(env.toJson()));
+    final file = File(_envPath(env.appId, env.channel, env.name));
+    file.parent.createSync(recursive: true);
+    file.writeAsStringSync(jsonEncode(env.toJson()));
   }
 
   @override
