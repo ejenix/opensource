@@ -64,3 +64,16 @@ Proven by widget tests (`flutter test`): an interpreted patch renders a real
 increments and re-renders through `setState`. Extend it by registering more
 widgets. Not yet covered: the long tail of the widget catalog, inherited-widget
 lookups (`Theme.of`, `MediaQuery.of`), and animation drivers.
+
+## Production: `EjenixPatchView`
+
+`InterpretedView` runs a module you already have. For over-the-air delivery use
+`EjenixPatchView`, which adds fetch, verify, cache, update-on-resume, fallback
+and crash-loop rollback — plus:
+
+- `channel:` — which patchable surface of the app this view follows, so several
+  screens live independently under one app id;
+- staged rollout — the view evaluates the control plane's published share
+  locally against a per-install id, so a canary needs no device registry.
+
+See [`docs/production.md`](../docs/production.md).

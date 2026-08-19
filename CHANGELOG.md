@@ -13,6 +13,16 @@ step when you bump.
 
 ### Added
 
+- **Channels** — the live bundle is keyed on `(appId, channel, env)`, so one app
+  can have many patchable screens that promote and roll back independently. One
+  app id, one signing key. `channel` defaults to `default` and the pre-channel
+  routes still resolve to it, so existing installs need no migration.
+- **Staged rollout** — `ejenix promote --rollout <percent>` exposes a patch to
+  part of the fleet. Each device decides locally whether it is in the share by
+  hashing its own install id against a published salt, so there is no device
+  registry and nothing is reported back. Widening is monotonic: re-promoting the
+  same bundle at a higher percentage only adds devices. Rollback always restores
+  to 100%.
 - Initial public release of the Ejenix interpreter-based live-update stack for
   Flutter.
 - Control-plane tokens can be supplied by `--token-file`, `--token-stdin`, or

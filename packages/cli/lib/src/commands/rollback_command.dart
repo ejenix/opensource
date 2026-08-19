@@ -8,6 +8,11 @@ class RollbackCommand extends EjenixCommand {
   RollbackCommand() {
     argParser
       ..addOption('env', help: 'Target environment.', defaultsTo: 'production')
+      ..addOption(
+        'channel',
+        help: 'Patchable surface within the app (one screen).',
+        defaultsTo: 'default',
+      )
       ..addOption('server', help: 'Control-plane base URL.')
       ..addOption('app', help: 'Application id.');
     addTokenOptions(help: 'App API token.');
@@ -32,7 +37,10 @@ class RollbackCommand extends EjenixCommand {
       appId: requireOption('app'),
       token: requireToken(),
     );
-    final result = await client.rollback(env);
+    final result = await client.rollback(
+      env,
+      channel: requireOption('channel'),
+    );
     console.success(
       'rolled $env back to ${result['activeBundleId']} '
       '(from ${result['rolledBackFrom']})',

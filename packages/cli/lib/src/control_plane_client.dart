@@ -46,12 +46,34 @@ class ControlPlaneClient {
       _send('POST', _uri('bundles'), bodyBytes: bundleBytes);
 
   /// Promotes [bundleId] to become active in [env].
-  Future<Map<String, Object?>> setActive(String env, String bundleId) =>
-      _send('POST', _uri('envs/$env/active'), json: {'bundleId': bundleId});
+  /// The path for one environment, on [channel].
+  ///
+  /// The default channel keeps using the pre-channel path so a new CLI still
+  /// talks to an older control plane.
+  String _envPath(String channel, String env, String tail) =>
+      channel == 'default'
+      ? 'envs/$env/$tail'
+      : 'channels/$channel/envs/$env/$tail';
+
+  Future<Map<String, Object?>> setActive(
+    String env,
+    String bundleId, {
+    String channel = 'default',
+    int? rolloutPercent,
+  }) => _send(
+    'POST',
+    _uri(_envPath(channel, env, 'active')),
+    json: {
+      'bundleId': bundleId,
+      if (rolloutPercent != null) 'rolloutPercent': rolloutPercent,
+    },
+  );
 
   /// Rolls [env] back to its previously active bundle.
-  Future<Map<String, Object?>> rollback(String env) =>
-      _send('POST', _uri('envs/$env/rollback'));
+  Future<Map<String, Object?>> rollback(
+    String env, {
+    String channel = 'default',
+  }) => _send('POST', _uri(_envPath(channel, env, 'rollback')));
 
   Future<Map<String, Object?>> _send(
     String method,

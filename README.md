@@ -10,7 +10,9 @@ byte verified against a key compiled into your binary before it runs.
 
 **Running in production, on both app stores.** Ejenix ships inside apps live on
 the App Store and Google Play today, delivering patches to real users — cleanly,
-with no failed updates and no rollbacks. The design satisfies both platforms'
+with no failed updates and no rollbacks. Patch any number of screens
+independently, roll each out to a slice of the fleet first, and let devices that
+hit a bad patch heal themselves. The design satisfies both platforms'
 rules on interpreted code: the interpreter ships inside the reviewed binary,
 nothing is dynamically linked or loaded, no OS security boundary is touched, and
 a patch reaches the platform only through capabilities the binary already
@@ -57,6 +59,55 @@ next time the user touches the app, which is why it feels immediate.
 
 ---
 
+## Releases that catch their own mistakes
+
+Ship a patch to **5% of the fleet**, watch, then widen — and pair it with
+rollback that already happens without you.
+
+```sh
+ejenix promote <id> --channel home --env production --rollout 5     # canary
+ejenix promote <id> --channel home --env production --rollout 40    # widen
+ejenix promote <id> --channel home --env production --rollout 100   # everyone
+```
+
+A device that crash-loops on a patch **rolls itself back** — no operator, no
+alert, no page. Put that together with a 5% canary and a bad release is caught
+by devices healing themselves *before the other 95% ever see it*. Most update
+systems give you one half or the other. The combination is why a bad patch here
+is a non-event instead of an incident.
+
+**And it costs no device tracking.** The control plane publishes a percentage
+and a salt; each install hashes its own local id and decides for itself. Nothing
+is reported back, there is no device registry, and the server has no way to
+target an individual user — so staged rollout does not quietly turn your update
+channel into an analytics pipeline.
+
+Three properties, each covered by tests:
+
+- **Stable** — an install's answer never changes between launches, so a patch
+  cannot appear and vanish.
+- **Monotonic** — widening only ever *adds* devices. Nobody who has the patch
+  loses it.
+- **Even** — 5%, 25% and 50% all land within a few points of the share you asked
+  for.
+
+### One app, every screen patchable
+
+The live bundle is keyed on `(appId, channel, env)`. Each patchable screen is a
+**channel**, so `home` and `checkout` promote, stage, and roll back
+independently — under **one app id and one signing key**:
+
+```sh
+ejenix promote <id> --channel home     --env production
+ejenix promote <id> --channel checkout --env production --rollout 5
+```
+
+```dart
+EjenixPatchView(appId: 'com.acme.shop', channel: 'home', env: 'production', ...)
+```
+
+---
+
 ## What you get
 
 **A compiler** for a wide subset of Dart — classes, generics, mixins, enums with
@@ -81,6 +132,17 @@ rendering, quarantine for patches that cannot run on this build, and automatic
 rollback on a crash loop. The app keeps working when the control plane is down,
 when a patch fails, and when there is no patch at all. All of it happens in a
 live app, with no restart (see above).
+
+**Channels — many patchable screens per app.** The live bundle is keyed on
+`(appId, channel, env)`, so `home` and `checkout` promote and roll back
+independently under one app id and one signing key.
+
+**Staged rollout.** `--rollout 5` exposes a patch to a slice of the fleet. Each
+device decides locally whether it is in the share by hashing its own install id
+against a published salt — no device registry, no telemetry, and no way for the
+control plane to target an individual install. Widening is monotonic: raising
+5% → 40% only ever adds devices. Paired with crash-loop rollback, a bad patch is
+caught by devices healing themselves before the other 95% ever see it.
 
 **A control plane you host** — upload, promote to an environment, roll back, and
 compute deltas, over a REST API with a browser dashboard, Prometheus metrics, and
@@ -132,8 +194,9 @@ ejenix verify patch.bundle --key app.key.pub
 | 4. Add the SDK | `ejenix_flutter` in `pubspec.yaml`, then drop in `EjenixPatchView` |
 | 5. Scaffold a screen | `ejenix scaffold home_screen --app-id com.acme.shop` |
 | 6. Expose capabilities | `@Patchable` + `ejenix gen` |
-| 7. Ship | `ejenix build` → `push` → `promote --env staging` |
-| 8. Undo | `ejenix rollback --env staging` |
+| 7. Ship | `ejenix build` → `push` → `promote --channel home --env staging` |
+| 8. Canary | `ejenix promote <id> --channel home --env production --rollout 5` |
+| 9. Undo | `ejenix rollback --channel home --env staging` |
 
 Full walkthrough: **[docs/production.md](docs/production.md)**.
 
@@ -178,6 +241,11 @@ Point your agent at it and it can do the integration end to end.
 - **Offline-first** — cache, then the patch bundled in the binary, then your
   native fallback. The binary alone is always a working app.
 - **Deterministic** — same source and compiler version, byte-identical bundle.
+- **Staged** — expose a release to a percentage of the fleet, decided on-device
+  with no telemetry and no device registry; widening never drops an install that
+  already has it.
+- **Self-healing** — a device that crash-loops on a patch quarantines it and
+  rolls itself back, with no operator involved.
 
 Read [Known limitations](docs/production.md#known-limitations) and
 [Store review and interpreted code](docs/production.md#store-review-and-interpreted-code)

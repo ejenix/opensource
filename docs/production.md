@@ -601,25 +601,56 @@ A patch only calls what the installed binary registers, so a capability must
 ship in a release *before* any patch uses it. See **Capability compatibility**
 above for the `--min-sdk` floor and the CI check that enforce it.
 
-### One active bundle per (app, environment)
+### Channels: one app, many patchable screens
 
-The control plane keys the live bundle on `(appId, env)` — the endpoint is
-`POST /v1/apps/<app>/envs/<env>/active`. There is no per-screen dimension, so an
-app with five patchable screens cannot have five bundles live at once under one
-app id; promoting one screen replaces whatever was active.
-
-Until a first-class surface/channel concept exists, the workaround is to
-**register each patchable screen as its own app id**:
+An app usually has more than one screen worth patching. The control plane keys
+the live bundle on `(appId, channel, env)`, so each screen gets its own
+**channel** and they promote and roll back independently — one app id, one
+signing key, one entry on the dashboard.
 
 ```sh
-ejenix app create --id com.yourco.app.login    --key release.key.pub --server https://host
-ejenix app create --id com.yourco.app.checkout --key release.key.pub --server https://host
+ejenix promote <id> --channel home     --env production --app com.acme.shop
+ejenix promote <id> --channel checkout --env production --app com.acme.shop
 ```
 
-Each screen's `EjenixPatchView` then passes its own `appId`, and each promotes
-and rolls back independently. It works and the guarantees are unchanged, but it
-inflates your app count and the dashboard reads as several apps rather than one
-app with several surfaces.
+```dart
+EjenixPatchView(appId: 'com.acme.shop', channel: 'home', env: 'production', ...)
+```
+
+Channels need no registration; naming one on `promote` creates it. `channel`
+defaults to `default`, which uses the pre-channel routes — so an app written
+before channels existed keeps working with nothing to change and nothing to
+migrate.
+
+### Staged rollout
+
+`--rollout <percent>` exposes a patch to part of the fleet:
+
+```sh
+ejenix promote <id> --channel home --env production --rollout 5     # canary
+ejenix promote <id> --channel home --env production --rollout 40    # widen
+ejenix promote <id> --channel home --env production --rollout 100   # everyone
+```
+
+**The device decides whether it is in the share.** The control plane publishes
+a percentage and a salt; each install hashes its own local id against them and
+answers for itself. Nothing is reported back, there is no device registry, and
+the control plane has no way to target an individual install.
+
+Three properties follow, and each is tested:
+
+- **Stable** — an install's answer does not change between launches, so a patch
+  does not appear and vanish.
+- **Monotonic** — the salt is fixed for the life of a promotion, so re-promoting
+  the same bundle at a higher percentage only ever *adds* devices. Nobody who
+  had the patch loses it.
+- **Even** — the spread lands within a few points of the requested share.
+
+This is the feature that pairs with crash-loop rollback: at 5%, a bad patch is
+caught by devices that roll *themselves* back before the other 95% ever see it.
+
+A `rollback` always restores the previous bundle to **100%** of devices — a
+partial rollback would leave the fleet split exactly when you need it whole.
 
 ### AWS App Runner is stateless
 

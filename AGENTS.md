@@ -21,10 +21,13 @@ that causes an outage rather than a compile error.
 
 ### Q1. How many screens should be patchable, and which ones?
 
-Not rhetorical: **each patchable screen needs its own app id.** The control
-plane keys the live bundle on `(appId, env)`, so if two screens share an app id,
-promoting one silently replaces the other. Get the count now and register that
-many ids in §4.
+Each patchable screen becomes a **channel** — one app id, one signing key, one
+entry on the dashboard, with a surface per screen. The control plane keys the
+live bundle on `(appId, channel, env)`, so channels promote and roll back
+independently and never overwrite each other.
+
+Get the count and the names now; you will use them for `--channel` in §8 and
+`channel:` on each `EjenixPatchView`.
 
 Start with one screen unless the user asks otherwise. A patch replaces one
 widget subtree — routing, navigation, state, and networking stay native.
@@ -174,29 +177,19 @@ This writes `release.key` (private seed, `0600`) and `release.key.pub`.
 
 ---
 
-## 4. Register one app id per patchable screen
+## 4. Register the app — once, whatever the screen count
 
-If Q1 said one screen, register one id. If it said three, register **three** —
-one per screen — because the control plane keys the live bundle on
-`(appId, env)` and there is no per-screen dimension. Two screens sharing an id
-means promoting one takes the other down.
-
-One screen:
+**One app id for the whole app**, however many screens are patchable. Screens
+are separated by channel, not by app id.
 
 ```bash
 ejenix app create --id com.acme.shop --name "Acme Shop" \
   --key release.key.pub --server http://localhost:8080
 ```
 
-Several screens — suffix the real app id per surface:
-
-```bash
-ejenix app create --id com.acme.shop.home     --name "Acme — home"     --key release.key.pub --server http://localhost:8080
-ejenix app create --id com.acme.shop.checkout --name "Acme — checkout" --key release.key.pub --server http://localhost:8080
-```
-
-All of them can share one signing key. Each screen's `EjenixPatchView` then
-passes its own `appId`, and each promotes and rolls back independently.
+Channels need no registration — naming one on `promote` creates it. Each screen
+passes its own `channel:` to `EjenixPatchView` and promotes and rolls back
+independently.
 
 ```bash
 ejenix app list --server http://localhost:8080     # confirm what registered
@@ -236,9 +229,12 @@ Then `flutter pub get`.
 Run this once per screen, with that screen's own app id:
 
 ```bash
-ejenix scaffold home_screen --app-id com.acme.shop.home
-ejenix scaffold checkout_screen --app-id com.acme.shop.checkout   # if Q1 said more than one
+ejenix scaffold home_screen --app-id com.acme.shop
+ejenix scaffold checkout_screen --app-id com.acme.shop   # same app id
 ```
+
+Then set `channel:` on each generated view — `'home'`, `'checkout'` — so they
+do not share a slot.
 
 This writes two files:
 
@@ -322,7 +318,8 @@ retyping this.
 ```dart
 EjenixPatchView(
   controlPlane: Uri.parse('http://localhost:8080'),  // required
-  appId: 'com.acme.shop.home',                       // required
+  appId: 'com.acme.shop',                            // required
+  channel: 'home',                                   // this screen's surface
   trustedKeys: [_publicKeyBytes],                    // required
   cacheDir: boot.cacheDir,                           // required — already awaited
   env: 'staging',                                    // defaults to 'production'
@@ -393,16 +390,35 @@ ejenix verify home.bundle --key release.key.pub
 ejenix push home.bundle --server http://localhost:8080 --app com.acme.shop
 
 # 4. make it live — CONFIRM WITH THE USER FIRST if env is production
-ejenix promote <bundle-id> --env staging \
+ejenix promote <bundle-id> --channel home --env staging \
   --server http://localhost:8080 --app com.acme.shop
 ```
+
+### Ship it to a slice first
+
+`--rollout <percent>` exposes a patch to part of the fleet. Each device decides
+locally whether it is in the share, so nothing is reported back and no device
+registry exists.
+
+```bash
+ejenix promote <id> --channel home --env production --rollout 5    # canary
+ejenix promote <id> --channel home --env production --rollout 100  # widen
+```
+
+Widening keeps the same devices and adds more — re-promoting the *same* bundle
+at a higher percentage never drops an install that already had it. Use this for
+anything risky: at 5%, a bad patch is caught by devices rolling themselves back
+before the other 95% ever see it.
+
+A `rollback` always restores the previous bundle to **100%** of devices.
 
 `push` prints the `bundle-id` that `promote` needs.
 
 Rolling back — restores whatever was active before the last promote:
 
 ```bash
-ejenix rollback --env staging --server http://localhost:8080 --app com.acme.shop.home
+ejenix rollback --channel home --env staging \
+  --server http://localhost:8080 --app com.acme.shop
 ```
 
 **Rollback needs somewhere to go.** After a single promote there is no previous
@@ -541,7 +557,7 @@ These cause fleet-wide outages, not local errors.
 For iterating on a patch without pushing to a control plane:
 
 ```bash
-ejenix watch patches/home_screen.dart --app-id com.acme.shop.home \
+ejenix watch patches/home_screen.dart --app-id com.acme.shop \
   --signing-key release.key
 ```
 
@@ -633,8 +649,9 @@ write `—` rather than deleting the row.
     Signing key (public)   ./release.key.pub  ← safe to commit
 
   WHAT IS PATCHABLE
-    <lib/home_screen_view.dart>   app id <com.acme.shop.home>       env <staging>
-    <lib/checkout_view.dart>      app id <com.acme.shop.checkout>   env <staging>
+    App id  <com.acme.shop>   (one id; screens are separated by channel)
+    <lib/home_screen_view.dart>   channel <home>       env <staging>   rollout <100%>
+    <lib/checkout_view.dart>      channel <checkout>   env <staging>   rollout <100%>
 
 ════════════════════════════════════════════════════════════════════
   HOW TO SHIP A PATCH
@@ -648,23 +665,25 @@ write `—` rather than deleting the row.
 
   2. Compile and sign:
        ejenix build patches/home_screen.dart -o home.bundle \
-         --signing-key release.key --app-id <com.acme.shop.home>
+         --signing-key release.key --app-id <com.acme.shop>
 
   3. Check it before it leaves your machine:
        ejenix verify home.bundle --key release.key.pub
 
   4. Upload (prints the bundle-id you need next):
-       ejenix push home.bundle --server https://<host> --app <com.acme.shop.home>
+       ejenix push home.bundle --server https://<host> --app <com.acme.shop>
 
   5. Go live — ALWAYS pass --env. It defaults to production:
-       ejenix promote <bundle-id> --env staging \
-         --server https://<host> --app <com.acme.shop.home>
+       ejenix promote <bundle-id> --channel home --env staging \
+         --server https://<host> --app <com.acme.shop>
+     Add --rollout 5 to expose it to a slice of the fleet first.
 
      Devices pick it up on their next launch or resume, and only if their
      EjenixPatchView(env:) matches the env you promoted to.
 
   ROLL BACK — one command, restores the previous bundle:
-       ejenix rollback --env staging --server https://<host> --app <com.acme.shop.home>
+       ejenix rollback --channel home --env staging \
+         --server https://<host> --app <com.acme.shop>
 
   Steps 4 and 5 are also a dropdown and a Promote button on the dashboard.
 

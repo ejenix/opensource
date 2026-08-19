@@ -106,7 +106,9 @@ Configuration and cost estimates: [`deploy/README.md`](../deploy/README.md).
 ## Where to go next
 
 - **Ship to real users:** [`docs/production.md`](production.md) — run your own
-  control plane and push live updates with the `EjenixPatchView` SDK.
+  control plane and push live updates with the `EjenixPatchView` SDK, including
+  **channels** (one app, many patchable screens) and **staged rollout**
+  (`--rollout 5` to expose a patch to a slice of the fleet first).
 - **Before you ship to a public app store:**
   [Store review and interpreted code](production.md#store-review-and-interpreted-code)
   — the Apple and Google clauses that apply, and the one condition only you can
