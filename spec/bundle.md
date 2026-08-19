@@ -115,7 +115,36 @@ what makes the content hash and signature reproducible.
 
 ---
 
-## 4. Verification
+## 4. Decoding
+
+Decoding happens **before** verification — it is the first thing untrusted
+bytes reach — so a decoder MUST be total, bounded and exact. A signature
+protects what executes; it protects nothing about what a decoder does on the
+way there.
+
+A decoder MUST:
+
+1. **Consume exactly one document.** Any trailing byte after the envelope, or
+   after the header array, is an error. Trailing bytes lie outside the region
+   the signature covers, so accepting them would let two distinct byte strings
+   be the same bundle.
+2. **Reject non-canonical encodings.** Integer arguments MUST use the shortest
+   form (§2). Accepting a longer form would let two byte strings decode to one
+   value, defeating the point of a content hash.
+3. **Bound every declared length before acting on it.** A length prefix is
+   attacker-controlled; it MUST be checked against a limit *and* against the
+   remaining input before it drives an allocation or a loop.
+4. **Enforce fixed widths.** `bundle-id` 16 bytes, `body-sha256` 32,
+   `public-key` 32, `signature` 64.
+5. **Surface every failure as one typed error.** No untyped exception —
+   range, UTF-8, or otherwise — may escape the decoder, or callers cannot
+   handle malformed input reliably.
+
+The reference implementation exposes these bounds as `DecodeLimits`.
+
+---
+
+## 5. Verification
 
 A verifier MUST check, in this order, and stop at the first failure (brief §6.6):
 
@@ -133,7 +162,7 @@ Each failure has a distinct typed reason so callers can log and act precisely.
 
 ---
 
-## 5. Cryptography
+## 6. Cryptography
 
 - **Hash:** SHA-256.
 - **Signature:** Ed25519 (RFC 8032). The signing key is stored and transported
@@ -142,7 +171,7 @@ Each failure has a distinct typed reason so callers can log and act precisely.
 
 ---
 
-## 6. Compatibility
+## 7. Compatibility
 
 The format is a contract. After v1.0.0 the layout does not change in a breaking
 way; a breaking change takes a new `magic`/`version-major` and a parallel

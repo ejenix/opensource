@@ -13,6 +13,22 @@ step when you bump.
 
 ### Added
 
+- **Bundle decoding is total, bounded and exact.** Decoding runs before any
+  signature check, so it is the first thing a hostile response reaches. It now
+  rejects trailing bytes (which lie outside what a signature covers), rejects
+  non-canonical integer encodings, bounds every declared length before it
+  becomes an allocation, enforces the fixed widths of ids, digests, keys and
+  signatures, and converts every failure to `BundleFormatException` so nothing
+  escapes as a raw `RangeError` or `FormatException`.
+- **Pointers are written atomically** on the device and the server. `state.json`
+  and the environment record decide what runs; written in place, a crash between
+  truncation and the final byte left them short. Both now write to a sibling,
+  flush, and rename.
+- **The scaffolded host no longer strands the screen.** A failed boot rendered a
+  spinner forever — and `EjenixPatchView` was never constructed, so the
+  `fallbackBuilder` could not run. It now falls back on error, bounds the boot
+  with a deadline so a hang cannot strand it either, and resolves the boot
+  future once instead of on every rebuild.
 - **`--env` is required** on `ejenix promote` and `ejenix rollback`. It used to
   default to `production`, so omitting it released to real users without the
   word appearing in the command. Every documented invocation already passed it
