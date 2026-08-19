@@ -240,6 +240,18 @@ Point your agent at it and it can do the integration end to end.
   built-ins that could allocate without limit carry their own ceilings.
 - **Offline-first** — cache, then the patch bundled in the binary, then your
   native fallback. The binary alone is always a working app.
+- **Structurally verified** — a signature proves origin, not safety, so every
+  module is checked for valid opcodes, register bounds, index ranges, jump and
+  handler targets, and class-graph acyclicity *before* it is staged. Nothing
+  unverified is ever written to disk, let alone run.
+- **Total and bounded parsing** — decoding happens before verification, so it
+  is the first thing a hostile server reaches: exactly one canonical document,
+  every length bounded before it allocates, and every failure typed.
+- **Crash-safe** — the records that decide what runs are written to a sibling,
+  flushed, and renamed. A crash mid-write leaves the old file, never half of a
+  new one.
+- **Fresh** — releases carry a monotonic generation and a device refuses to go
+  backwards, so an old but validly signed bundle cannot be replayed at it.
 - **Deterministic** — same source and compiler version, byte-identical bundle.
 - **Staged** — expose a release to a percentage of the fleet, decided on-device
   with no telemetry and no device registry; widening never drops an install that

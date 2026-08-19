@@ -67,14 +67,24 @@ body transitively.
 
 ## 3. Body
 
-`body-bytes` decodes to a 9-element CBOR array:
+`body-bytes` decodes to a 9- or 10-element CBOR array, depending on version:
 
 ```text
-[ body-format-version, constants, functions, entry-function,
-  global-count, static-init, call-sites, classes, metadata ]
+v8:  [ body-format-version, constants, functions, entry-function,
+       global-count, static-init, call-sites, classes, metadata ]
+
+v9:  [ …as v8…, release-generation ]
 ```
 
-- **`body-format-version`** (int): the current version is `8`. It is bumped only
+- **`body-format-version`** (int): writers emit `9`. **Readers MUST accept a
+  range**, not one exact value — this build reads `8..9`. A reader that
+  demanded equality would reject bundles in *both* directions the moment the
+  version moved: it could not read anything already published, and every
+  deployed reader would reject anything new. No field could then be added
+  without stranding a fleet. Fields introduced by a later version take their
+  documented defaults when absent. Refusing a *newer* body remains correct — a
+  reader that cannot see a field cannot enforce what it promises, and `min-sdk`
+  is the mechanism for keeping such bundles away from it. It is bumped only
   on a breaking layout change: v2 added the call-site table, v3 the class table,
   v4 each function's capture list, v5 the async flag, v6 each function's
   exception-handler table, v7 the static-field global count and initializer
@@ -108,6 +118,12 @@ body transitively.
   precedes its subclasses. Indexed by `alloc`.
 - **`metadata`** (array): `[ target-app-id, target-flutter-version, min-sdk ]`,
   all text.
+- **`release-generation`** (int, v9+): a value that only increases across the
+  releases a publisher issues. A host records the highest it has accepted and
+  MUST refuse anything lower, so an old but validly signed bundle cannot be
+  replayed at it — a signature establishes authorship, never recency. `0` means
+  no ordering is claimed, and a host applies no freshness rule to it; bundles
+  written before v9 are read as `0`.
 
 The body is a positional array with no maps, so encoding is deterministic
 without a key-ordering rule: identical inputs produce identical bytes, which is

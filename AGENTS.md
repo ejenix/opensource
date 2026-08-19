@@ -545,6 +545,8 @@ These cause fleet-wide outages, not local errors.
 | `StepLimitExceededException` | Patch loops or does unbounded work | Fix the patch; do not raise the budget |
 | 401 from the control plane | No/incorrect token | `export EJENIX_TOKEN=...` |
 | 409 on `push` | That bundle id already exists with different bytes | Build a new bundle; ids are immutable by design |
+| `onStatus` → `rejected`, reason mentions **bytecode verification** | The module is structurally invalid — a stale encoder, a corrupted artifact, or a bundle not built by this toolchain | Rebuild from source with a matching `ejenix` version. A signature cannot catch this, which is why it is checked separately |
+| `onStatus` → `rejected`, reason mentions **stale release** | The bundle's `--generation` is below the highest that device has already accepted | Build with a higher `--generation`. Devices refuse to go backwards so an old signed bundle cannot be replayed |
 | 409 on `rollback` | Only one bundle has ever been promoted to that env | Expected. There is nothing behind the current one |
 | `The function 'Scaffold' isn't defined` when building a patch | `patch_sdk/flutter.dart` is missing | Copy it — see §6 "Install the patch SDK" |
 | Patch verifies and promotes, device only ever shows the fallback | `_trustedKeys` is still the empty list the scaffold leaves | Fill it with the `release.key.pub` bytes |
@@ -663,7 +665,8 @@ write `—` rather than deleting the row.
   1. Edit the screen:
        patches/home_screen.dart
 
-  2. Compile and sign:
+  2. Compile and sign — add `--generation <n>`, increasing per release, so an
+     old but validly signed bundle cannot be replayed at a device:
        ejenix build patches/home_screen.dart -o home.bundle \
          --signing-key release.key --app-id <com.acme.shop>
 

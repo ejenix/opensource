@@ -236,6 +236,14 @@ without you doing anything.
 - **Bounded** — every interpreted call runs under an instruction budget, so a
   patch that loops forever falls back and rolls back instead of freezing the
   app. See [When a patch hangs](#when-a-patch-hangs).
+- **Structurally verified** — a signature proves origin, not safety. Every
+  module is checked for valid opcodes, register bounds, index ranges, jump and
+  handler targets, and class-graph acyclicity before it is staged, so a bundle
+  from a leaked key or a faulty encoder cannot reach the interpreter.
+- **Crash-safe** — the records that decide what runs (the device's state file,
+  the server's environment pointer) are written to a sibling, flushed, and
+  renamed. A crash mid-write leaves the previous file intact rather than half
+  of a new one.
 
 For the local dev loop (edit → see it on device in ~10 ms), see
 [`docs/getting-started.md`](getting-started.md) §4 and `ejenix watch`.
