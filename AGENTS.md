@@ -78,10 +78,10 @@ Asking these wastes the user's time; each has one correct answer.
 
 Not once at the start — these are not undone by re-running the command.
 
-- **Any `ejenix promote`** — `--env` **defaults to `production`**, so omitting
-  it releases to real users without the word ever appearing in the command.
-  Always pass `--env` explicitly, and confirm before any promote that resolves
-  to production. `ejenix rollback --env` defaults to production too.
+- **`ejenix promote --env production`** — this reaches real users immediately.
+  `--env` is required on both `promote` and `rollback` (the CLI refuses without
+  it rather than assuming production), so the target is always visible in the
+  command you are about to run. Confirm before any promote to production.
 - `./deploy.sh --target aws|gcp|azure|kubernetes` — creates billable resources.
 - Overwriting an existing `*.key` — destroys a signing key. Installs signed by
   it can never be patched again without a store release.

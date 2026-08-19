@@ -13,6 +13,11 @@ step when you bump.
 
 ### Added
 
+- **`--env` is required** on `ejenix promote` and `ejenix rollback`. It used to
+  default to `production`, so omitting it released to real users without the
+  word appearing in the command. Every documented invocation already passed it
+  explicitly; only a bare `promote <id>` is affected, which is exactly the case
+  worth refusing.
 - **Channels** — the live bundle is keyed on `(appId, channel, env)`, so one app
   can have many patchable screens that promote and roll back independently. One
   app id, one signing key. `channel` defaults to `default` and the pre-channel

@@ -8,7 +8,12 @@ import '../control_plane_client.dart';
 class PromoteCommand extends EjenixCommand {
   PromoteCommand() {
     argParser
-      ..addOption('env', help: 'Target environment.', defaultsTo: 'production')
+      ..addOption(
+        'env',
+        help:
+            'Target environment (required). Not defaulted: this command\n'
+            'publishes a patch to real users, so the target is never assumed.',
+      )
       ..addOption(
         'channel',
         help: 'Patchable surface within the app (one screen).',
@@ -42,7 +47,11 @@ class PromoteCommand extends EjenixCommand {
   Future<int> execute() async {
     final rest = argResults!.rest;
     if (rest.isEmpty) throw CliException('missing bundle id', exitCode: 64);
-    final env = requireOption('env');
+    final env = requireOption(
+      'env',
+      hint:
+          'This publishes to real users. Pass --env staging or --env production.',
+    );
     final channel = requireOption('channel');
     final rolloutRaw = argResults!['rollout'] as String?;
     final rollout = rolloutRaw == null ? null : int.tryParse(rolloutRaw);

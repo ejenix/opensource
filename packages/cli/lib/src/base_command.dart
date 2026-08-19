@@ -52,9 +52,15 @@ abstract class EjenixCommand extends Command<int> {
   }
 
   /// Returns the value of required option [name], or throws a usage error.
-  String requireOption(String name) =>
+  ///
+  /// [hint] is appended when the option is missing, for cases where the
+  /// omission is dangerous rather than merely incomplete.
+  String requireOption(String name, {String? hint}) =>
       argResults![name] as String? ??
-      (throw CliException('missing required --$name', exitCode: 64));
+      (throw CliException(
+        'missing required --$name${hint == null ? '' : '\n       $hint'}',
+        exitCode: 64,
+      ));
 
   /// Registers `--token` and the safer ways to supply it.
   ///

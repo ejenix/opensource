@@ -142,6 +142,41 @@ void main() {
     );
   });
 
+  group('--env is never assumed', () {
+    // It used to default to `production`, so `ejenix promote <id>` shipped to
+    // real users without the word appearing anywhere in the command — and an
+    // agent following a script would never have been prompted to confirm.
+    test('promote refuses without --env, and says why', () async {
+      final r = await runCli([
+        'promote',
+        'some-bundle-id',
+        '--server',
+        baseUrl,
+        '--app',
+        'acme',
+        '--token',
+        'admin-token',
+      ]);
+      expect(r.code, 64);
+      expect(r.err, contains('missing required --env'));
+      expect(r.err, contains('real users'));
+    });
+
+    test('rollback refuses without --env too', () async {
+      final r = await runCli([
+        'rollback',
+        '--server',
+        baseUrl,
+        '--app',
+        'acme',
+        '--token',
+        'admin-token',
+      ]);
+      expect(r.code, 64);
+      expect(r.err, contains('missing required --env'));
+    });
+  });
+
   group('no token at all', () {
     test('names every way to supply one', () async {
       final r = await appList(const []);

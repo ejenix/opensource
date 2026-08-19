@@ -7,7 +7,12 @@ import '../control_plane_client.dart';
 class RollbackCommand extends EjenixCommand {
   RollbackCommand() {
     argParser
-      ..addOption('env', help: 'Target environment.', defaultsTo: 'production')
+      ..addOption(
+        'env',
+        help:
+            'Target environment (required). Not defaulted: this command\n'
+            'changes what real users are running, so the target is never assumed.',
+      )
       ..addOption(
         'channel',
         help: 'Patchable surface within the app (one screen).',
@@ -31,7 +36,10 @@ class RollbackCommand extends EjenixCommand {
 
   @override
   Future<int> execute() async {
-    final env = requireOption('env');
+    final env = requireOption(
+      'env',
+      hint: 'This changes what real users are running. Pass --env explicitly.',
+    );
     final client = ControlPlaneClient(
       server: requireOption('server'),
       appId: requireOption('app'),
