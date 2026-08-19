@@ -155,11 +155,23 @@ class Loader {
       );
     }
 
+    // Freshness. A generation of 0 means the bundle predates the field, so no
+    // ordering is claimed and none is enforced — otherwise every already
+    // published bundle would become unacceptable the day this shipped.
+    final generation = metadata.releaseGeneration;
+    if (generation != 0 && generation < store.acceptedGeneration) {
+      return Rejected(
+        'stale release: generation $generation is below the highest already '
+        'accepted (${store.acceptedGeneration})',
+      );
+    }
+
     final compatibility = host.isCompatible(metadata);
     if (!compatibility.isCompatible) {
       return Rejected('incompatible: ${compatibility.reason}');
     }
     store.writeStaging(bundle);
+    if (generation != 0) store.recordGeneration(generation);
     return Staged(bundle.bundleId);
   }
 

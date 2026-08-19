@@ -21,11 +21,25 @@ class ModuleCodec {
   /// function's exception-handler table; v7 adds the static-field global count
   /// and initializer index; v8 widens the async flag to a function-kind int
   /// (0 sync, 1 async, 2 sync*, 3 async*).
-  static const int bodyFormatVersion = 8;
+  static const int bodyFormatVersion = 9;
+
+  /// The oldest body version this build can still read.
+  ///
+  /// Accepting a range rather than one exact version is what makes the format
+  /// extensible at all. With a strict `!=`, bumping the version rejected
+  /// bundles in *both* directions at once: a new device could not read an
+  /// already-published bundle, and every deployed device rejected anything new.
+  /// A field could therefore never be added without stranding a fleet.
+  ///
+  /// Reading old bundles is always safe — fields introduced later simply take
+  /// their documented defaults. Refusing *newer* bundles stays correct: a build
+  /// that cannot see a field cannot enforce what that field promises, and
+  /// `minSdk` is the mechanism for keeping such bundles away from it.
+  static const int minReadableBodyVersion = 8;
 
   /// Encodes [module] and [metadata] to canonical CBOR body bytes.
   static Uint8List encodeBody(Module module, BundleMetadata metadata) {
-    final w = CborWriter()..writeArrayHeader(9);
+    final w = CborWriter()..writeArrayHeader(10);
     w.writeInt(bodyFormatVersion);
 
     final constants = module.constants.values;
@@ -105,7 +119,8 @@ class ModuleCodec {
       ..writeArrayHeader(3)
       ..writeString(metadata.targetAppId)
       ..writeString(metadata.targetFlutterVersion)
-      ..writeString(metadata.minSdk);
+      ..writeString(metadata.minSdk)
+      ..writeInt(metadata.releaseGeneration);
 
     return w.takeBytes();
   }
@@ -113,12 +128,18 @@ class ModuleCodec {
   /// Decodes body [bytes] back into a module and its metadata.
   static (Module, BundleMetadata) decodeBody(Uint8List bytes) {
     final r = CborReader(bytes);
-    if (r.readArrayHeader() != 9) {
-      throw CborException('bundle body must be a 9-element array');
+    final bodyElements = r.readArrayHeader();
+    if (bodyElements != 9 && bodyElements != 10) {
+      throw CborException(
+        'bundle body must be a 9- or 10-element array, got $bodyElements',
+      );
     }
     final version = r.readInt();
-    if (version != bodyFormatVersion) {
-      throw CborException('unsupported body format version $version');
+    if (version < minReadableBodyVersion || version > bodyFormatVersion) {
+      throw CborException(
+        'unsupported body format version $version '
+        '(this build reads $minReadableBodyVersion..$bodyFormatVersion)',
+      );
     }
 
     final constants = ConstantPool();
@@ -228,6 +249,9 @@ class ModuleCodec {
       targetAppId: r.readString(),
       targetFlutterVersion: r.readString(),
       minSdk: r.readString(),
+      // Absent in v8 bodies, which predate freshness. Zero means "no
+      // generation claimed", and a device applies no ordering rule to it.
+      releaseGeneration: bodyElements == 10 ? r.readInt() : 0,
     );
 
     return (

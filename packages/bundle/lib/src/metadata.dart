@@ -10,6 +10,7 @@ class BundleMetadata {
     required this.targetAppId,
     required this.targetFlutterVersion,
     required this.minSdk,
+    this.releaseGeneration = 0,
   });
 
   /// The application this bundle targets (e.g. `com.example.app`).
@@ -20,6 +21,18 @@ class BundleMetadata {
 
   /// The minimum interpreter SDK version required to run the bundle.
   final String minSdk;
+
+  /// A number that only ever increases across the releases you publish.
+  ///
+  /// A device records the highest generation it has accepted and refuses
+  /// anything lower. Without it, a compromised or merely stale control plane
+  /// can re-serve an *old but validly signed* release — the signature is
+  /// genuine, so every cryptographic check passes, and a fixed vulnerability
+  /// comes back. Signing proves authorship; it says nothing about recency.
+  ///
+  /// `0` means "unversioned": bundles built before this field existed carry it,
+  /// and a device applies no freshness rule to them, exactly as before.
+  final int releaseGeneration;
 
   @override
   bool operator ==(Object other) =>

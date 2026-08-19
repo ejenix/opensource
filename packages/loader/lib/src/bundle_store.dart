@@ -40,6 +40,7 @@ class BundleStore {
 
   Uint8List? _activeId;
   String _installId = '';
+  int _acceptedGeneration = 0;
   int _activatedAtMillis = 0;
   int _launchesSinceActivation = 0;
   bool _healthy = false;
@@ -48,6 +49,23 @@ class BundleStore {
 
   /// The active bundle's id, or `null` if none is active.
   Uint8List? get activeId => _activeId;
+
+  /// The highest release generation this device has accepted.
+  ///
+  /// A signature proves a release was authored by the key holder — never that
+  /// it is the *current* one. Without a high-water mark, a compromised or
+  /// merely stale control plane can re-serve an old, validly signed bundle and
+  /// every cryptographic check still passes, quietly reinstating whatever that
+  /// release contained.
+  int get acceptedGeneration => _acceptedGeneration;
+
+  /// Records [generation] as accepted, if it advances the mark.
+  void recordGeneration(int generation) {
+    if (generation > _acceptedGeneration) {
+      _acceptedGeneration = generation;
+      _persist();
+    }
+  }
 
   /// A random identifier for this install, generated once and kept.
   ///
@@ -286,6 +304,7 @@ class BundleStore {
         ..addAll((json['quarantined'] as List? ?? const []).cast<String>());
       _hostFingerprint = json['hostFingerprint'] as String?;
       _installId = json['installId'] as String? ?? '';
+      _acceptedGeneration = (json['acceptedGeneration'] as num?)?.toInt() ?? 0;
       // Self-heal: an activeId with no file means nothing is active.
       if (_activeId != null && !_activeFile.existsSync()) _activeId = null;
     } on FormatException {
@@ -334,6 +353,7 @@ class BundleStore {
         'quarantined': _quarantined.toList(),
         'hostFingerprint': _hostFingerprint,
         'installId': _installId,
+        'acceptedGeneration': _acceptedGeneration,
       }),
     );
   }

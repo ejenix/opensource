@@ -625,6 +625,26 @@ defaults to `default`, which uses the pre-channel routes — so an app written
 before channels existed keeps working with nothing to change and nothing to
 migrate.
 
+### Freshness: stop an old release being replayed
+
+A signature proves a bundle was authored by your key. It says nothing about
+whether it is the *current* release — so a compromised, or merely stale,
+control plane can re-serve an old but validly signed bundle, and every
+cryptographic check passes.
+
+Stamp each release with a number that only goes up:
+
+```sh
+ejenix build home.dart -o home.bundle --signing-key release.key \
+  --app-id com.acme.shop --generation 42
+```
+
+A device records the highest generation it has accepted and refuses anything
+below it, across restarts. Use your CI build number — anything monotonic works.
+
+Bundles built without `--generation` carry `0`, which claims no ordering and is
+never refused, so nothing you have already published is affected.
+
 ### Staged rollout
 
 `--rollout <percent>` exposes a patch to part of the fleet:

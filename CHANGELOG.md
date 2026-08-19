@@ -13,6 +13,19 @@ step when you bump.
 
 ### Added
 
+- **Releases carry a generation, and devices refuse to go backwards.**
+  `ejenix build --generation <n>` stamps a monotonic number; a device records
+  the highest it has accepted and rejects anything lower. A signature proves a
+  release was authored by the key holder, never that it is the current one — so
+  without this a compromised or stale control plane could re-serve an old,
+  validly signed bundle and every cryptographic check would still pass.
+  Generation `0` claims no ordering, so bundles published before this field
+  existed are unaffected.
+- **The body format version is a readable range, not one exact value**
+  (`minReadableBodyVersion`..`bodyFormatVersion`). A strict `!=` meant bumping
+  the version rejected bundles in *both* directions at once, so no field could
+  ever be added without stranding a fleet. New builds read old bodies and apply
+  documented defaults to fields that did not exist yet.
 - **Bytecode is verified before it is staged.** A signature proves origin, not
   structural safety — a leaked key, a compiler bug, or a hand-built artifact
   can produce a module that verifies cryptographically and indexes a register

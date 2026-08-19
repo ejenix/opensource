@@ -21,6 +21,14 @@ class CompileCommand extends EjenixCommand {
         defaultsTo: '0.0.0',
       )
       ..addOption(
+        'generation',
+        help:
+            'Release generation: a number that only increases across the '
+            'releases you publish. A device refuses anything below the highest '
+            'it has accepted, so an old but validly signed bundle cannot be '
+            'replayed at it. Omit for 0, which claims no ordering.',
+      )
+      ..addOption(
         'min-sdk',
         help: 'Minimum interpreter SDK.',
         defaultsTo: '1.0.0',
@@ -46,6 +54,18 @@ class CompileCommand extends EjenixCommand {
   String get invocation =>
       'ejenix build <input.dart> -o <output.bundle> --signing-key <key> '
       '--app-id <id>';
+
+  static int _generation(String? raw) {
+    if (raw == null) return 0;
+    final n = int.tryParse(raw);
+    if (n == null || n < 0) {
+      throw CliException(
+        '--generation must be a non-negative integer',
+        exitCode: 64,
+      );
+    }
+    return n;
+  }
 
   @override
   Future<int> execute() async {
@@ -87,6 +107,7 @@ class CompileCommand extends EjenixCommand {
         targetAppId: appId,
         targetFlutterVersion: argResults!['flutter-version'] as String,
         minSdk: argResults!['min-sdk'] as String,
+        releaseGeneration: _generation(argResults!['generation'] as String?),
       ),
       signer: signer,
       compilerVersion: argResults!['compiler-version'] as String,
