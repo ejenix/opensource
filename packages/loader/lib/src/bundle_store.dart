@@ -108,7 +108,13 @@ class BundleStore {
 
   /// Writes [bundle] to staging, ready to be activated.
   void writeStaging(Bundle bundle) {
-    _stagingFile(bundle.bundleId).writeAsBytesSync(bundle.encode());
+    // Atomic too: a truncated staging file would fail verification and be
+    // discarded, which is safe but wastes a download and looks like a bad
+    // patch rather than a bad write.
+    final staging = _stagingFile(bundle.bundleId);
+    final tmp = File('${staging.path}.tmp');
+    tmp.writeAsBytesSync(bundle.encode(), flush: true);
+    tmp.renameSync(staging.path);
   }
 
   /// Reads a staged bundle by [id], or `null` if not staged.
@@ -287,8 +293,37 @@ class BundleStore {
     }
   }
 
+  /// Replaces [file]'s contents without ever leaving it half-written.
+  ///
+  /// Write-in-place has a window: if the process dies after truncation and
+  /// before the last byte lands, the file is left short. For `state.json` that
+  /// window costs the device its record of what is active and whether it is
+  /// healthy — the pointer and the bytes on disk disagree, and the store either
+  /// self-heals to nothing or trips the corrupt-state path.
+  ///
+  /// Writing to a sibling, flushing it to the platform, then renaming closes
+  /// that window: `rename` within a filesystem is atomic, so a reader sees
+  /// either the whole old file or the whole new one, never a prefix.
+  static void _writeAtomic(File file, String contents) {
+    final tmp = File('${file.path}.tmp');
+    try {
+      tmp.writeAsStringSync(contents, flush: true);
+      tmp.renameSync(file.path);
+    } on FileSystemException {
+      if (tmp.existsSync()) {
+        try {
+          tmp.deleteSync();
+        } on FileSystemException {
+          // Best effort; the rethrow below carries the real failure.
+        }
+      }
+      rethrow;
+    }
+  }
+
   void _persist() {
-    _stateFile.writeAsStringSync(
+    _writeAtomic(
+      _stateFile,
       jsonEncode({
         'activeId': _activeId == null ? null : _hex(_activeId!),
         'activatedAtMillis': _activatedAtMillis,

@@ -53,9 +53,10 @@ class FileStore implements Store {
   }
 
   @override
-  Future<void> putApp(App app) async => File(
-    '${root.path}/apps/${app.id}.json',
-  ).writeAsStringSync(jsonEncode(app.toJson()));
+  Future<void> putApp(App app) async => _writeAtomic(
+    File('${root.path}/apps/${app.id}.json'),
+    utf8.encode(jsonEncode(app.toJson())),
+  );
 
   @override
   Future<void> putBundle(
@@ -65,7 +66,7 @@ class FileStore implements Store {
   ) async {
     final dir = Directory('${root.path}/blobs/$appId')
       ..createSync(recursive: true);
-    File('${dir.path}/${_hex(bundleId)}.bundle').writeAsBytesSync(bytes);
+    _writeAtomic(File('${dir.path}/${_hex(bundleId)}.bundle'), bytes);
   }
 
   @override
@@ -137,7 +138,33 @@ class FileStore implements Store {
   Future<void> putEnv(Env env) async {
     final file = File(_envPath(env.appId, env.channel, env.name));
     file.parent.createSync(recursive: true);
-    file.writeAsStringSync(jsonEncode(env.toJson()));
+    _writeAtomic(file, utf8.encode(jsonEncode(env.toJson())));
+  }
+
+  /// Replaces [file] without ever leaving it half-written.
+  ///
+  /// The environment pointer is the record that decides what every device
+  /// fetches next. Written in place, a crash between truncation and the final
+  /// byte leaves it unparseable — and the control plane then reports no active
+  /// bundle for an environment that has one. Write beside it, flush, rename:
+  /// rename is atomic within a filesystem, so a reader sees the whole old file
+  /// or the whole new one.
+  static void _writeAtomic(File file, List<int> bytes) {
+    file.parent.createSync(recursive: true);
+    final tmp = File('${file.path}.tmp');
+    try {
+      tmp.writeAsBytesSync(bytes, flush: true);
+      tmp.renameSync(file.path);
+    } on FileSystemException {
+      if (tmp.existsSync()) {
+        try {
+          tmp.deleteSync();
+        } on FileSystemException {
+          // Best effort; the rethrow carries the real failure.
+        }
+      }
+      rethrow;
+    }
   }
 
   @override
