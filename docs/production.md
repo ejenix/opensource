@@ -217,6 +217,9 @@ a patch may only use capabilities the shipped build already registers, and must
 stay within the app you submitted. See
 [Store review and interpreted code](#store-review-and-interpreted-code).
 
+`--env` is required on both `promote` and `rollback` — it is not defaulted,
+because a release command should never assume its most destructive target.
+
 Made a mistake? One button (or `ejenix rollback --env production …`) restores the
 previous bundle, and devices that crash-loop on a bad patch roll themselves back
 without you doing anything.

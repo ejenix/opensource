@@ -673,7 +673,7 @@ write `—` rather than deleting the row.
   4. Upload (prints the bundle-id you need next):
        ejenix push home.bundle --server https://<host> --app <com.acme.shop>
 
-  5. Go live — ALWAYS pass --env. It defaults to production:
+  5. Go live — --env is required; the CLI refuses without it:
        ejenix promote <bundle-id> --channel home --env staging \
          --server https://<host> --app <com.acme.shop>
      Add --rollout 5 to expose it to a slice of the fleet first.
