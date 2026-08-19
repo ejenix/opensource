@@ -124,8 +124,33 @@ class CborWriter {
 
 /// A CBOR decoder matching [CborWriter]. It reads the same restricted type set
 /// and rejects anything unexpected with a [CborException].
+/// Bounds applied while decoding untrusted input.
+///
+/// Every field here exists because the value it caps is attacker-controlled:
+/// the bytes arrive from a network before any signature has been checked, so
+/// a length prefix must never be trusted enough to allocate against.
+class DecodeLimits {
+  const DecodeLimits({
+    this.maxByteStringLength = 64 * 1024 * 1024,
+    this.maxStringLength = 1024 * 1024,
+    this.maxArrayLength = 1024 * 1024,
+  });
+
+  /// Largest byte string, covering a whole bundle body.
+  final int maxByteStringLength;
+
+  /// Largest text string — identifiers and version strings, not payloads.
+  final int maxStringLength;
+
+  /// Largest declared array count.
+  final int maxArrayLength;
+}
+
 class CborReader {
-  CborReader(this._bytes);
+  CborReader(this._bytes, {this.limits = const DecodeLimits()});
+
+  /// Bounds applied while reading untrusted bytes.
+  final DecodeLimits limits;
 
   final Uint8List _bytes;
   int _pos = 0;
@@ -147,6 +172,7 @@ class CborReader {
   Uint8List readBytes() {
     final (major, arg) = _readHead();
     if (major != 2) throw CborException('expected bytes, got major $major');
+    _checkLength(arg, limits.maxByteStringLength, 'byte string');
     return _take(arg);
   }
 
@@ -154,14 +180,47 @@ class CborReader {
   String readString() {
     final (major, arg) = _readHead();
     if (major != 3) throw CborException('expected string, got major $major');
-    return utf8.decode(_take(arg));
+    _checkLength(arg, limits.maxStringLength, 'string');
+    final raw = _take(arg);
+    try {
+      return utf8.decode(raw);
+    } on FormatException catch (e) {
+      // Callers catch CborException. Invalid UTF-8 used to escape as a
+      // FormatException and bypass every typed handler above this.
+      throw CborException('invalid UTF-8 in string: ${e.message}');
+    }
   }
 
   /// Reads an array header, returning the item count.
   int readArrayHeader() {
     final (major, arg) = _readHead();
     if (major != 4) throw CborException('expected array, got major $major');
+    // An unchecked count is an unchecked loop: a four-byte length can ask a
+    // reader to iterate four billion times over a handful of bytes.
+    _checkLength(arg, limits.maxArrayLength, 'array');
     return arg;
+  }
+
+  /// Fails before a declared length becomes an allocation or a loop bound.
+  void _checkLength(int n, int max, String what) {
+    if (n < 0 || n > max) {
+      throw CborException('$what length $n exceeds limit $max');
+    }
+    if (n > _bytes.length - _pos && what != 'array') {
+      throw CborException('$what length $n exceeds remaining input');
+    }
+  }
+
+  /// Fails unless every byte has been consumed.
+  ///
+  /// Without this, anything appended after a complete document is silently
+  /// ignored — including bytes outside the region a signature covers.
+  void requireEndOfInput() {
+    if (!atEnd) {
+      throw CborException(
+        '${_bytes.length - _pos} unexpected trailing byte(s)',
+      );
+    }
   }
 
   /// Reads a 64-bit float.
@@ -240,10 +299,21 @@ class CborReader {
       arg = ai;
     } else if (ai == 24) {
       arg = _readByte();
+      // Canonical CBOR requires the shortest encoding of a value. Accepting a
+      // longer one means two different byte strings decode identically, which
+      // breaks the promise the whole format rests on: that a body hash
+      // identifies exactly one encoding.
+      if (arg < 24)
+        throw CborException('non-canonical integer: $arg in 1 byte');
     } else if (ai == 25) {
       arg = _readN(2);
+      if (arg < 256)
+        throw CborException('non-canonical integer: $arg in 2 bytes');
     } else if (ai == 26) {
       arg = _readN(4);
+      if (arg < 65536) {
+        throw CborException('non-canonical integer: $arg in 4 bytes');
+      }
     } else if (ai == 27) {
       arg = _readN(8);
     } else {

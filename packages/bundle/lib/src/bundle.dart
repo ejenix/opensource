@@ -185,16 +185,27 @@ class Bundle {
 
   /// Parses bundle [bytes]. Throws [BundleFormatException] if the byte layout is
   /// malformed; cryptographic validity is a separate concern for [verify].
-  static Bundle decode(Uint8List bytes) {
+  /// Decodes [bytes], which are untrusted until [verify] succeeds.
+  ///
+  /// This runs *before* any signature check — it is the first thing a hostile
+  /// server's response reaches — so every length is bounded, every fixed-width
+  /// field is checked, and anything that is not exactly one complete document
+  /// is rejected. Failures surface as [BundleFormatException]; nothing escapes
+  /// as a raw RangeError or FormatException.
+  static Bundle decode(Uint8List bytes, {DecodeLimits? limits}) {
     try {
-      return _decode(bytes);
+      return _decode(bytes, limits ?? const DecodeLimits());
     } on CborException catch (e) {
       throw BundleFormatException(e.message);
+    } on RangeError catch (e) {
+      throw BundleFormatException('malformed bundle: ${e.message}');
+    } on FormatException catch (e) {
+      throw BundleFormatException('malformed bundle: ${e.message}');
     }
   }
 
-  static Bundle _decode(Uint8List bytes) {
-    final r = CborReader(bytes);
+  static Bundle _decode(Uint8List bytes, DecodeLimits limits) {
+    final r = CborReader(bytes, limits: limits);
     if (r.readArrayHeader() != 4) {
       throw BundleFormatException('bundle must be a 4-element array');
     }
@@ -202,8 +213,12 @@ class Bundle {
     final publicKey = r.readBytes();
     final signature = r.readBytes();
     final bodyBytes = r.readBytes();
+    // Nothing may follow the document. Trailing bytes sit outside everything
+    // the signature covers, so accepting them means two different byte strings
+    // are the "same" bundle.
+    r.requireEndOfInput();
 
-    final hr = CborReader(headerBytes);
+    final hr = CborReader(headerBytes, limits: limits);
     if (hr.readArrayHeader() != 7) {
       throw BundleFormatException('header must be a 7-element array');
     }
@@ -214,6 +229,15 @@ class Bundle {
     final createdAt = hr.readInt();
     final compilerVersion = hr.readString();
     final bodyHash = hr.readBytes();
+    hr.requireEndOfInput();
+
+    // Fixed-width by definition. Checking here means later code can index them
+    // without re-validating, and a truncated key or digest is caught as a
+    // format error rather than surfacing as a confusing verification failure.
+    _requireLength(bundleId, 16, 'bundle id');
+    _requireLength(bodyHash, 32, 'body hash');
+    _requireLength(publicKey, 32, 'public key');
+    _requireLength(signature, 64, 'signature');
 
     return Bundle._(
       magic: magic,
@@ -228,6 +252,12 @@ class Bundle {
       bodyBytes: bodyBytes,
       headerBytes: headerBytes,
     );
+  }
+
+  static void _requireLength(Uint8List v, int n, String what) {
+    if (v.length != n) {
+      throw BundleFormatException('$what must be $n bytes, got ${v.length}');
+    }
   }
 
   static Uint8List _encodeHeader(
