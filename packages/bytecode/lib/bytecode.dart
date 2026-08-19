@@ -17,4 +17,5 @@ export 'src/record_value.dart';
 export 'src/function_proto.dart';
 export 'src/instruction.dart';
 export 'src/module.dart';
+export 'src/verifier.dart';
 export 'src/opcode.dart';

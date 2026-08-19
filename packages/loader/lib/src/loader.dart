@@ -3,6 +3,7 @@
 import 'dart:typed_data';
 
 import 'package:ejenix_bundle/bundle.dart';
+import 'package:ejenix_bytecode/bytecode.dart';
 import 'package:ejenix_delta/delta.dart';
 
 import 'bundle_store.dart';
@@ -129,12 +130,31 @@ class Loader {
 
   UpdateOutcome _stageModuleBundle(Bundle bundle) {
     final BundleMetadata metadata;
+    final Module module;
     try {
-      final (_, decoded) = bundle.decodeBody();
+      final (decodedModule, decoded) = bundle.decodeBody();
+      module = decodedModule;
       metadata = decoded;
     } on CborException catch (e) {
       return Rejected('body decode failed: ${e.message}');
+    } on BundleFormatException catch (e) {
+      return Rejected('body decode failed: ${e.message}');
     }
+
+    // The signature proved where these bytes came from, not that they are a
+    // sane module. A leaked key, a compiler bug, or a hand-built artifact all
+    // produce something that verifies cryptographically and indexes a register
+    // that does not exist. The interpreter indexes directly, so that is
+    // undefined behaviour in the host rather than a catchable error — the
+    // check has to happen here, before anything is written to staging.
+    final defects = verifyModule(module);
+    if (defects.isNotEmpty) {
+      return Rejected(
+        'bytecode verification failed (${defects.length} error(s)): '
+        '${defects.first.message}',
+      );
+    }
+
     final compatibility = host.isCompatible(metadata);
     if (!compatibility.isCompatible) {
       return Rejected('incompatible: ${compatibility.reason}');

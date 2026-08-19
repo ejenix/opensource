@@ -158,6 +158,14 @@ Metadata compatibility (target app id, Flutter version, min SDK) is checked by
 the loader against the host, not by the bundle verifier — see
 `spec/host-api.md` and `packages/loader/`.
 
+**A passing signature is not permission to execute.** It establishes origin, not
+structural safety: a module from a leaked key, a faulty encoder, or a
+hand-built artifact can satisfy every check above and still name a register,
+constant, or jump target that does not exist. A host MUST therefore verify the
+decoded module structurally — opcodes, operand ranges, index bounds, jump and
+handler targets, class-graph acyclicity — before executing it. See
+`packages/bytecode/` (`verifyModule`).
+
 Each failure has a distinct typed reason so callers can log and act precisely.
 
 ---

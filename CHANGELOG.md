@@ -13,6 +13,15 @@ step when you bump.
 
 ### Added
 
+- **Bytecode is verified before it is staged.** A signature proves origin, not
+  structural safety — a leaked key, a compiler bug, or a hand-built artifact
+  can produce a module that verifies cryptographically and indexes a register
+  that does not exist. `verifyModule` checks opcodes, operand formats, register
+  bounds, constant/function/class/call-site/global indices, jump targets,
+  handler ranges, superclass acyclicity, and module quotas, reporting every
+  defect rather than the first. Several of these invariants previously lived in
+  Dart `assert`s, which release builds strip — they held while developing and
+  vanished on the devices that matter.
 - **Bundle decoding is total, bounded and exact.** Decoding runs before any
   signature check, so it is the first thing a hostile response reaches. It now
   rejects trailing bytes (which lie outside what a signature covers), rejects
