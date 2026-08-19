@@ -225,6 +225,172 @@ void main() {
     });
   });
 
+  group('module-level quotas and shape', () {
+    // Ceilings and module-wide indices. Reachable only from decoded bytes — a
+    // Dart caller would not build these — which is exactly why the verifier
+    // has to check them rather than trusting the constructor.
+    const tight = VerifyLimits(
+      maxFunctions: 1,
+      maxClasses: 1,
+      maxCodeWords: 2,
+      maxRegisters: 4,
+      maxHandlers: 1,
+    );
+
+    test('too many functions', () {
+      final m = _module([
+        _fn(words: [_word(Op.retVoid)], name: 'a'),
+        _fn(words: [_word(Op.retVoid)], name: 'b'),
+      ]);
+      expect(
+        verifyModule(m, limits: tight).map((e) => e.message).join(),
+        contains('functions exceeds'),
+      );
+    });
+
+    test('too many classes', () {
+      final m = _module(
+        [
+          _fn(words: [_word(Op.retVoid)]),
+        ],
+        classes: const [
+          ClassDescriptor(
+            name: 'A',
+            fieldCount: 0,
+            superIndex: -1,
+            methods: {},
+          ),
+          ClassDescriptor(
+            name: 'B',
+            fieldCount: 0,
+            superIndex: -1,
+            methods: {},
+          ),
+        ],
+      );
+      expect(
+        verifyModule(m, limits: tight).map((e) => e.message).join(),
+        contains('classes exceeds'),
+      );
+    });
+
+    test('a function longer than the code-word ceiling', () {
+      final m = _module([
+        _fn(words: [_word(Op.retVoid), _word(Op.retVoid), _word(Op.retVoid)]),
+      ]);
+      expect(
+        verifyModule(m, limits: tight).map((e) => e.message).join(),
+        contains('code words exceeds'),
+      );
+    });
+
+    test('a register file wider than the encoding allows', () {
+      // A register index is one byte; anything past that cannot be addressed.
+      final m = _module([
+        _fn(words: [_word(Op.retVoid)], registers: 200),
+      ]);
+      expect(
+        verifyModule(m, limits: tight).map((e) => e.message).join(),
+        contains('registerCount 200'),
+      );
+    });
+
+    test('more handlers than the ceiling', () {
+      final m = _module([
+        _fn(
+          words: [_word(Op.retVoid)],
+          handlers: const [
+            ExceptionHandler(start: 0, end: 1, target: 0, catchReg: 0),
+            ExceptionHandler(start: 0, end: 1, target: 0, catchReg: 0),
+          ],
+        ),
+      ]);
+      expect(
+        verifyModule(m, limits: tight).map((e) => e.message).join(),
+        contains('handlers exceeds'),
+      );
+    });
+
+    test('an entry function that does not exist', () {
+      final m = Module(
+        constants: ConstantPool(),
+        functions: [
+          _fn(words: [_word(Op.retVoid)]),
+        ],
+        entryFunction: 0,
+      );
+      expect(verifyModule(m), isEmpty);
+    });
+
+    test('a static initializer index out of range', () {
+      final m = Module(
+        constants: ConstantPool(),
+        functions: [
+          _fn(words: [_word(Op.retVoid)]),
+        ],
+        staticInit: 9,
+      );
+      expect(
+        verifyModule(m).map((e) => e.message).join(),
+        contains('staticInit 9'),
+      );
+    });
+
+    test('a superclass index out of range', () {
+      final m = _module(
+        [
+          _fn(words: [_word(Op.retVoid)]),
+        ],
+        classes: const [
+          ClassDescriptor(name: 'A', fieldCount: 0, superIndex: 5, methods: {}),
+        ],
+      );
+      expect(
+        verifyModule(m).map((e) => e.message).join(),
+        contains('superIndex 5'),
+      );
+    });
+
+    test('a negative field count', () {
+      final m = _module(
+        [
+          _fn(words: [_word(Op.retVoid)]),
+        ],
+        classes: const [
+          ClassDescriptor(
+            name: 'A',
+            fieldCount: -1,
+            superIndex: -1,
+            methods: {},
+          ),
+        ],
+      );
+      expect(
+        verifyModule(m).map((e) => e.message).join(),
+        contains('negative fieldCount'),
+      );
+    });
+
+    test('a pfx not followed by an indexed instruction', () {
+      // pfx carries the high bits of the *next* instruction's index. Standing
+      // alone, or before something that takes no index, it is meaningless.
+      final m = _module([
+        _fn(words: [_word(Op.pfx), _word(Op.retVoid)]),
+      ]);
+      expect(verifyModule(m).map((e) => e.message).join(), contains('pfx'));
+    });
+
+    test('a trailing pfx with nothing after it', () {
+      final m = _module([
+        _fn(words: [_word(Op.pfx)]),
+      ]);
+      expect(
+        verifyModule(m).map((e) => e.message).join(),
+        contains('nothing follows'),
+      );
+    });
+  });
+
   group('reporting', () {
     test('every defect is reported, not just the first', () {
       // An operator fixing one problem at a time would otherwise need as many
@@ -243,6 +409,22 @@ void main() {
         _fn(words: [_word(Op.ret, a: 9)], name: 'broken'),
       ]);
       expect(verifyModule(m).first.toString(), contains('broken'));
+    });
+
+    test('the exception message lists every error', () {
+      final m = _module([
+        _fn(
+          words: [_word(Op.ret, a: 9), _aBx(Op.loadConst, 0, 50)],
+          registers: 2,
+        ),
+      ]);
+      try {
+        verifyModuleOrThrow(m);
+        fail('expected a ModuleVerificationException');
+      } on ModuleVerificationException catch (e) {
+        expect(e.toString(), contains('error(s)'));
+        expect(e.toString().split('\n').length, greaterThan(2));
+      }
     });
 
     test('verifyModuleOrThrow throws with every error attached', () {
