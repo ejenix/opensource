@@ -603,6 +603,31 @@ both stores:
 
 ## Known limitations
 
+### You cannot yet see fleet health
+
+A device reports nothing back. You can promote to 5% and limit the blast
+radius, but you cannot *see* that 5% — the first sign a patch is failing is a
+user complaining.
+
+This is deliberate for now rather than an oversight: staged rollout works
+precisely because the control plane never learns which devices exist, and naive
+telemetry would undo that. The design that keeps both —
+aggregate counters, no device identity, off by default — is written up in
+[`docs/design/fleet-observability.md`](design/fleet-observability.md) and is not
+yet implemented.
+
+Until it is, treat `onStatus` as your signal: wire it to whatever logging your
+app already has, where you already have consent.
+
+### Capability compatibility is name-only
+
+The gate matches capability *names*, not signatures. A capability whose shape
+changed — a renamed parameter, or one made required — is still present under
+the same name, so it passes both the CI check and the device check, and then
+fails inside the binding. See
+[What the check does not cover](#what-the-check-does-not-cover) for the
+`--min-sdk` discipline that works around it today.
+
 Things worth knowing before you design around them, rather than discovering
 mid-integration.
 
